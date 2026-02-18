@@ -6,12 +6,12 @@ from orchestrator.llm.client import LLMClient, LLMCallResult
 
 class TestLLMClient:
     def test_create_client(self):
-        client = LLMClient(model="anthropic/claude-sonnet-4-20250514", api_key="test-key")
-        assert client.model == "anthropic/claude-sonnet-4-20250514"
+        client = LLMClient(model="anthropic/claude-sonnet-4-6", api_key="test-key")
+        assert client.model == "anthropic/claude-sonnet-4-6"
 
     @pytest.mark.asyncio
     async def test_call_returns_result(self):
-        client = LLMClient(model="anthropic/claude-sonnet-4-20250514", api_key="test-key")
+        client = LLMClient(model="anthropic/claude-sonnet-4-6", api_key="test-key")
 
         mock_response = AsyncMock()
         mock_response.choices = [AsyncMock()]
@@ -33,7 +33,7 @@ class TestLLMClient:
     @pytest.mark.asyncio
     async def test_call_with_custom_params(self):
         client = LLMClient(
-            model="anthropic/claude-sonnet-4-20250514",
+            model="anthropic/claude-sonnet-4-6",
             api_key="test-key",
             temperature=0.5,
             max_tokens=500,
