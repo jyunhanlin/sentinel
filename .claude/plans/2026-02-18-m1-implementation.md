@@ -4,7 +4,7 @@
 
 **Goal:** Build the 3-LLM agent pipeline that analyzes market data, generates structured trade proposals, and pushes results through Telegram.
 
-**Architecture:** Three LLM agents (Sentiment, Market, Proposer) orchestrated by a pipeline runner. LLM-1 and LLM-2 run in parallel via asyncio.gather, LLM-3 consumes their outputs. Schema validation with retry+degrade on failure. APScheduler for periodic execution + TG `/run` for manual triggers. All LLM calls recorded to SQLite for traceability.
+**Architecture:** Three LLM agents (Sentiment, Market, Proposer) orchestrated by a pipeline runner. LLM-1 and LLM-2 run in parallel via asyncio.gather, LLM-3 consumes their outputs. Schema validation with retry+degrade on failure. APScheduler for periodic execution + TG `/run` for manual triggers. All LLM calls recorded to SQLite for traceability. **Dual-model:** Sonnet for scheduled runs, Opus for manual/daily deep analysis, with per-call model override.
 
 **Tech Stack:** Python 3.12+, uv, LiteLLM, Pydantic v2, CCXT (async), python-telegram-bot, APScheduler, structlog, SQLModel, pytest, pytest-asyncio
 
@@ -32,6 +32,7 @@ Add to `orchestrator/src/orchestrator/config.py`, inside `class Settings`, after
     # LLM
     anthropic_api_key: str
     llm_model: str = "anthropic/claude-sonnet-4-6"
+    llm_model_premium: str = "anthropic/claude-opus-4-6"
     llm_temperature: float = 0.2
     llm_max_tokens: int = 2000
     llm_max_retries: int = 1
@@ -180,13 +181,15 @@ class LLMClient:
         self,
         messages: list[dict],
         *,
+        model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMCallResult:
+        effective_model = model or self.model
         start = time.monotonic()
 
         response = await acompletion(
-            model=self.model,
+            model=effective_model,
             messages=messages,
             temperature=temperature or self._temperature,
             max_tokens=max_tokens or self._max_tokens,
@@ -198,7 +201,7 @@ class LLMClient:
 
         result = LLMCallResult(
             content=content,
-            model=self.model,
+            model=effective_model,
             input_tokens=response.usage.prompt_tokens,
             output_tokens=response.usage.completion_tokens,
             latency_ms=elapsed_ms,
@@ -527,12 +530,12 @@ class BaseAgent(ABC, Generic[T]):
         self._client = client
         self._max_retries = max_retries
 
-    async def analyze(self, **kwargs) -> AgentResult[T]:
+    async def analyze(self, *, model_override: str | None = None, **kwargs) -> AgentResult[T]:
         messages = self._build_messages(**kwargs)
         llm_calls: list[LLMCallResult] = []
 
         for attempt in range(1 + self._max_retries):
-            call_result = await self._client.call(messages)
+            call_result = await self._client.call(messages, model=model_override)
             llm_calls.append(call_result)
 
             validation = validate_llm_output(call_result.content, self.output_model)
@@ -1805,6 +1808,7 @@ class PipelineResult(BaseModel, frozen=True):
     run_id: str
     symbol: str
     status: str  # completed, rejected, failed
+    model_used: str = ""
     proposal: TradeProposal | None = None
     rejection_reason: str = ""
     sentiment_degraded: bool = False
@@ -1832,9 +1836,11 @@ class PipelineRunner:
         self._llm_call_repo = llm_call_repo
         self._proposal_repo = proposal_repo
 
-    async def execute(self, symbol: str, *, timeframe: str = "1h") -> PipelineResult:
+    async def execute(
+        self, symbol: str, *, timeframe: str = "1h", model_override: str | None = None
+    ) -> PipelineResult:
         run_id = str(uuid.uuid4())
-        log = logger.bind(run_id=run_id, symbol=symbol)
+        log = logger.bind(run_id=run_id, symbol=symbol, model_override=model_override)
         log.info("pipeline_start")
 
         self._pipeline_repo.create_run(run_id=run_id, symbol=symbol)
@@ -1846,8 +1852,8 @@ class PipelineRunner:
 
             # Run LLM-1 and LLM-2 in parallel
             sentiment_result, market_result = await asyncio.gather(
-                self._sentiment_agent.analyze(snapshot=snapshot),
-                self._market_agent.analyze(snapshot=snapshot),
+                self._sentiment_agent.analyze(snapshot=snapshot, model_override=model_override),
+                self._market_agent.analyze(snapshot=snapshot, model_override=model_override),
             )
 
             self._save_llm_calls(run_id, "sentiment", sentiment_result)
@@ -1858,6 +1864,7 @@ class PipelineRunner:
                 snapshot=snapshot,
                 sentiment=sentiment_result.output,
                 market=market_result.output,
+                model_override=model_override,
             )
             self._save_llm_calls(run_id, "proposer", proposer_result)
 
@@ -2005,7 +2012,29 @@ class TestPipelineScheduler:
         results = await scheduler.run_once(symbols=["BTC/USDT:USDT"])
 
         assert len(results) == 1
-        mock_runner.execute.assert_called_once_with("BTC/USDT:USDT")
+        mock_runner.execute.assert_called_once_with("BTC/USDT:USDT", model_override=None)
+
+    @pytest.mark.asyncio
+    async def test_run_once_with_model_override(self):
+        mock_runner = AsyncMock()
+        mock_runner.execute.return_value = MagicMock(status="completed")
+
+        scheduler = PipelineScheduler(
+            runner=mock_runner,
+            symbols=["BTC/USDT:USDT"],
+            interval_minutes=15,
+            premium_model="anthropic/claude-opus-4-6",
+        )
+
+        results = await scheduler.run_once(
+            symbols=["BTC/USDT:USDT"],
+            model_override="anthropic/claude-opus-4-6",
+        )
+
+        assert len(results) == 1
+        mock_runner.execute.assert_called_once_with(
+            "BTC/USDT:USDT", model_override="anthropic/claude-opus-4-6"
+        )
 ```
 
 **Step 2: Run test to verify it fails**
@@ -2024,6 +2053,7 @@ from __future__ import annotations
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from orchestrator.pipeline.runner import PipelineResult, PipelineRunner
@@ -2038,20 +2068,25 @@ class PipelineScheduler:
         runner: PipelineRunner,
         symbols: list[str],
         interval_minutes: int = 15,
+        premium_model: str = "",
     ) -> None:
         self.symbols = symbols
         self.interval_minutes = interval_minutes
+        self.premium_model = premium_model
         self._runner = runner
         self._scheduler: AsyncIOScheduler | None = None
 
     async def run_once(
-        self, *, symbols: list[str] | None = None
+        self,
+        *,
+        symbols: list[str] | None = None,
+        model_override: str | None = None,
     ) -> list[PipelineResult]:
         target_symbols = symbols or self.symbols
         results = []
         for symbol in target_symbols:
-            logger.info("scheduler_running_symbol", symbol=symbol)
-            result = await self._runner.execute(symbol)
+            logger.info("scheduler_running_symbol", symbol=symbol, model_override=model_override)
+            result = await self._runner.execute(symbol, model_override=model_override)
             results.append(result)
             logger.info(
                 "scheduler_symbol_done",
@@ -2060,19 +2095,38 @@ class PipelineScheduler:
             )
         return results
 
+    async def _run_daily_premium(self) -> None:
+        """Daily deep analysis using premium model (Opus)."""
+        logger.info("daily_premium_start", model=self.premium_model)
+        await self.run_once(model_override=self.premium_model)
+
     def start(self) -> None:
         self._scheduler = AsyncIOScheduler()
+
+        # Regular interval — Sonnet (default model)
         self._scheduler.add_job(
             self.run_once,
             trigger=IntervalTrigger(minutes=self.interval_minutes),
-            id="pipeline_scheduler",
-            name="Pipeline Scheduler",
+            id="pipeline_interval",
+            name="Pipeline Interval (Sonnet)",
             replace_existing=True,
         )
+
+        # Daily deep analysis — Opus (premium model)
+        if self.premium_model:
+            self._scheduler.add_job(
+                self._run_daily_premium,
+                trigger=CronTrigger(hour=0, minute=0),  # 00:00 UTC
+                id="pipeline_daily_premium",
+                name="Pipeline Daily (Opus)",
+                replace_existing=True,
+            )
+
         self._scheduler.start()
         logger.info(
             "scheduler_started",
             interval_minutes=self.interval_minutes,
+            premium_model=self.premium_model or "(none)",
             symbols=self.symbols,
         )
 
@@ -2347,10 +2401,17 @@ def is_admin(chat_id: int, *, admin_ids: list[int]) -> bool:
     return chat_id in admin_ids
 
 
+MODEL_ALIASES: dict[str, str] = {
+    "sonnet": "anthropic/claude-sonnet-4-6",
+    "opus": "anthropic/claude-opus-4-6",
+}
+
+
 class SentinelBot:
-    def __init__(self, token: str, admin_chat_ids: list[int]) -> None:
+    def __init__(self, token: str, admin_chat_ids: list[int], *, premium_model: str = "") -> None:
         self.token = token
         self.admin_chat_ids = admin_chat_ids
+        self._premium_model = premium_model
         self._app: Application | None = None
         self._scheduler: PipelineScheduler | None = None
         self._latest_results: dict[str, object] = {}  # symbol → PipelineResult
@@ -2442,21 +2503,36 @@ class SentinelBot:
             await update.message.reply_text("Pipeline not configured.")
             return
 
-        args = context.args
-        await update.message.reply_text("Running pipeline...")
+        args = list(context.args or [])
 
-        if args:
-            # Map short name to full symbol
-            query = args[0].upper()
+        # Parse model from args: /run [symbol] [model]
+        # model can be "sonnet", "opus", or a full model ID
+        model_override: str | None = self._premium_model or None
+        symbol_args: list[str] = []
+
+        for arg in args:
+            lower = arg.lower()
+            if lower in MODEL_ALIASES:
+                model_override = MODEL_ALIASES[lower]
+            elif lower.startswith("anthropic/"):
+                model_override = lower
+            else:
+                symbol_args.append(arg)
+
+        model_label = (model_override or "default").split("/")[-1]
+        await update.message.reply_text(f"Running pipeline (model: {model_label})...")
+
+        if symbol_args:
+            query = symbol_args[0].upper()
             symbols = [
                 s for s in self._scheduler.symbols if query in s.upper()
             ]
             if not symbols:
                 await update.message.reply_text(f"Unknown symbol: {query}")
                 return
-            results = await self._scheduler.run_once(symbols=symbols)
+            results = await self._scheduler.run_once(symbols=symbols, model_override=model_override)
         else:
-            results = await self._scheduler.run_once()
+            results = await self._scheduler.run_once(model_override=model_override)
 
         for result in results:
             self._latest_results[result.symbol] = result
@@ -2565,6 +2641,7 @@ def create_app_components(
     database_url: str,
     anthropic_api_key: str,
     llm_model: str = "anthropic/claude-sonnet-4-6",
+    llm_model_premium: str = "anthropic/claude-opus-4-6",
     llm_temperature: float = 0.2,
     llm_max_tokens: int = 2000,
     llm_max_retries: int = 1,
@@ -2614,10 +2691,15 @@ def create_app_components(
         runner=runner,
         symbols=symbols,
         interval_minutes=pipeline_interval_minutes,
+        premium_model=llm_model_premium,
     )
 
     # Telegram
-    bot = SentinelBot(token=telegram_bot_token, admin_chat_ids=telegram_admin_chat_ids)
+    bot = SentinelBot(
+        token=telegram_bot_token,
+        admin_chat_ids=telegram_admin_chat_ids,
+        premium_model=llm_model_premium,
+    )
     bot.set_scheduler(scheduler)
 
     return {
@@ -2642,6 +2724,7 @@ def main() -> None:
         database_url=settings.database_url,
         anthropic_api_key=settings.anthropic_api_key,
         llm_model=settings.llm_model,
+        llm_model_premium=settings.llm_model_premium,
         llm_temperature=settings.llm_temperature,
         llm_max_tokens=settings.llm_max_tokens,
         llm_max_retries=settings.llm_max_retries,

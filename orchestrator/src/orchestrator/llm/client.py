@@ -34,13 +34,15 @@ class LLMClient:
         self,
         messages: list[dict],
         *,
+        model: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> LLMCallResult:
+        effective_model = model or self.model
         start = time.monotonic()
 
         response = await acompletion(
-            model=self.model,
+            model=effective_model,
             messages=messages,
             temperature=temperature or self._temperature,
             max_tokens=max_tokens or self._max_tokens,
@@ -52,7 +54,7 @@ class LLMClient:
 
         result = LLMCallResult(
             content=content,
-            model=self.model,
+            model=effective_model,
             input_tokens=response.usage.prompt_tokens,
             output_tokens=response.usage.completion_tokens,
             latency_ms=elapsed_ms,

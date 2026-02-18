@@ -18,6 +18,7 @@ Build the 3-LLM agent pipeline that analyzes market data, generates structured t
 | LLM failure handling | Retry 1x + degrade to neutral defaults | Balances reliability with pipeline continuity |
 | Scheduler | APScheduler interval + TG `/run` manual trigger | Automated + easy testing/demo |
 | TG push behavior | Push every pipeline run (including FLAT) | Full visibility into system operation |
+| Model selection | Dual-model: Sonnet (scheduled) + Opus (manual/daily) | Cost vs. depth tradeoff; Sonnet for frequent automated runs, Opus for deliberate analysis |
 
 ## Architecture
 
@@ -71,7 +72,8 @@ Runner.execute(symbol)
 ### LLM Client (`llm/client.py`)
 
 - Wraps LiteLLM `acompletion()` for unified multi-provider interface
-- Method: `async call(model, messages, response_format) → str`
+- Method: `async call(messages, *, model=None, ...) → LLMCallResult`
+- Per-call `model` override: allows switching between Sonnet/Opus without creating separate client instances
 - Records every call to `LLMCallRecord`: model, latency_ms, tokens, cost
 - Configurable `temperature` and `max_tokens`
 
@@ -123,14 +125,32 @@ Abstract base class providing:
 - Iterates `pipeline_symbols` list, runs each through pipeline
 - Graceful shutdown on SIGTERM/SIGINT
 - Configurable interval via `Settings.pipeline_interval_minutes`
+- **Dual schedule:**
+  - Regular interval (e.g., every 15min) → Sonnet (`llm_model`)
+  - Daily deep analysis (e.g., 00:00 UTC) → Opus (`llm_model_premium`)
+
+### Model Selection Strategy
+
+| Trigger | Default Model | Override? |
+|---------|---------------|-----------|
+| Scheduled interval (15min) | Sonnet | No |
+| Daily deep analysis | Opus | No |
+| TG `/run` (manual) | Opus | Yes — `/run BTC sonnet` |
+
+- `LLMClient.call()` accepts per-call `model` override
+- `BaseAgent.analyze()` passes `model_override` down to client
+- `PipelineRunner.execute()` accepts `model_override` parameter
+- TG `/run` defaults to Opus (intentional trigger = want deeper analysis)
+- User can downgrade via `/run [symbol] sonnet` or `/run [symbol] opus`
 
 ### Telegram Enhancements
 
-- `/run` command: manually triggers pipeline for all configured symbols
-- `/run BTC` variant: trigger for specific symbol
+- `/run` command: manually triggers pipeline for all configured symbols (default: Opus)
+- `/run BTC` variant: trigger for specific symbol (default: Opus)
+- `/run BTC sonnet` variant: trigger with explicit model choice
 - `/status`: shows latest pipeline run results per symbol
 - `/coin BTC`: shows most recent proposal for that symbol
-- `format_proposal()`: structured message with direction, entry, SL/TP, confidence, rationale
+- `format_proposal()`: structured message with direction, entry, SL/TP, confidence, rationale, **model used**
 
 ## Out of Scope
 
