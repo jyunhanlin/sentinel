@@ -16,6 +16,10 @@ class Settings(BaseSettings):
 
     # LLM
     anthropic_api_key: str
+    llm_model: str = "anthropic/claude-sonnet-4-20250514"
+    llm_temperature: float = 0.2
+    llm_max_tokens: int = 2000
+    llm_max_retries: int = 1
 
     # Database
     database_url: str = "sqlite:///data/sentinel.db"

@@ -5,7 +5,9 @@ description = "Multi-LLM trade proposal orchestrator"
 requires-python = ">=3.12"
 dependencies = [
     "aiosqlite>=0.22.1",
+    "apscheduler>=3.11.2",
     "ccxt>=4.5.38",
+    "litellm>=1.81.13",
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "python-telegram-bot>=22.6",
