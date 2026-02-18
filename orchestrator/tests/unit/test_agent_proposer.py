@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from orchestrator.agents.proposer import ProposerAgent
 from orchestrator.exchange.data_fetcher import MarketSnapshot

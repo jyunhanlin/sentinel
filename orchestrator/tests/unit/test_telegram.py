@@ -1,3 +1,5 @@
+from orchestrator.models import EntryOrder, Side, TradeProposal
+from orchestrator.pipeline.runner import PipelineResult
 from orchestrator.telegram.bot import SentinelBot, is_admin
 from orchestrator.telegram.formatters import (
     format_help,
@@ -5,8 +7,6 @@ from orchestrator.telegram.formatters import (
     format_status,
     format_welcome,
 )
-from orchestrator.models import EntryOrder, Side, TradeProposal
-from orchestrator.pipeline.runner import PipelineResult
 
 
 class TestIsAdmin:

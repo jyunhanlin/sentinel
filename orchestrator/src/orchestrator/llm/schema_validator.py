@@ -3,11 +3,8 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
-
-T = TypeVar("T", bound=BaseModel)
 
 
 @dataclass(frozen=True)
@@ -24,7 +21,10 @@ type ValidationResult[T] = ValidationSuccess[T] | ValidationFailure
 
 
 def _extract_json(raw: str) -> str | None:
-    """Extract JSON object from raw LLM output, handling markdown code blocks and surrounding text."""
+    """Extract JSON object from raw LLM output.
+
+    Handles markdown code blocks and surrounding text.
+    """
     # Try markdown code block first
     md_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", raw, re.DOTALL)
     if md_match:
@@ -38,7 +38,7 @@ def _extract_json(raw: str) -> str | None:
     return None
 
 
-def validate_llm_output(raw: str, model_class: type[T]) -> ValidationResult[T]:
+def validate_llm_output[T: BaseModel](raw: str, model_class: type[T]) -> ValidationResult[T]:
     """Parse and validate raw LLM string output against a Pydantic model."""
     json_str = _extract_json(raw)
     if json_str is None:

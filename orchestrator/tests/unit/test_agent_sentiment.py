@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from orchestrator.agents.sentiment import SentimentAgent
 from orchestrator.exchange.data_fetcher import MarketSnapshot

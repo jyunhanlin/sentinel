@@ -1,8 +1,12 @@
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from orchestrator.storage.models import LLMCallRecord, PipelineRunRecord, TradeProposalRecord
-from orchestrator.storage.repository import LLMCallRepository, PipelineRepository, TradeProposalRepository
+from orchestrator.storage.models import PipelineRunRecord
+from orchestrator.storage.repository import (
+    LLMCallRepository,
+    PipelineRepository,
+    TradeProposalRepository,
+)
 
 
 @pytest.fixture

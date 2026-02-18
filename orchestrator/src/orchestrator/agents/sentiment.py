@@ -17,7 +17,8 @@ class SentimentAgent(BaseAgent[SentimentReport]):
             "Respond with ONLY a JSON object matching this schema:\n"
             "{\n"
             '  "sentiment_score": <int 0-100, 50=neutral, >50=bullish, <50=bearish>,\n'
-            '  "key_events": [{"event": "<description>", "impact": "positive|negative|neutral", "source": "<source>"}],\n'
+            '  "key_events": [{"event": "<desc>", "impact": "positive|negative|neutral", '
+            '"source": "<source>"}],\n'
             '  "sources": ["<list of data sources used>"],\n'
             '  "confidence": <float 0.0-1.0>\n'
             "}"
@@ -57,6 +58,6 @@ class SentimentAgent(BaseAgent[SentimentReport]):
 
         lines = []
         for candle in snapshot.ohlcv[-10:]:  # last 10 candles max
-            o, h, l, c, v = candle[1], candle[2], candle[3], candle[4], candle[5]
-            lines.append(f"  O={o:.1f} H={h:.1f} L={l:.1f} C={c:.1f} V={v:.0f}")
+            o, h, lo, c, v = candle[1], candle[2], candle[3], candle[4], candle[5]
+            lines.append(f"  O={o:.1f} H={h:.1f} L={lo:.1f} C={c:.1f} V={v:.0f}")
         return "\n".join(lines)

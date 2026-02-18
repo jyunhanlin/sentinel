@@ -1,6 +1,9 @@
-import pytest
 
-from orchestrator.llm.schema_validator import ValidationSuccess, ValidationFailure, validate_llm_output
+from orchestrator.llm.schema_validator import (
+    ValidationFailure,
+    ValidationSuccess,
+    validate_llm_output,
+)
 from orchestrator.models import SentimentReport
 
 
@@ -12,7 +15,11 @@ class TestValidateLLMOutput:
         assert result.value.sentiment_score == 72
 
     def test_json_with_surrounding_text(self):
-        raw = 'Here is my analysis:\n{"sentiment_score": 50, "key_events": [], "sources": [], "confidence": 0.5}\nDone.'
+        raw = (
+            'Here is my analysis:\n'
+            '{"sentiment_score": 50, "key_events": [], "sources": [], "confidence": 0.5}'
+            '\nDone.'
+        )
         result = validate_llm_output(raw, SentimentReport)
         assert isinstance(result, ValidationSuccess)
         assert result.value.sentiment_score == 50
@@ -36,7 +43,11 @@ class TestValidateLLMOutput:
         assert len(result.error_message) > 0
 
     def test_json_in_markdown_code_block(self):
-        raw = '```json\n{"sentiment_score": 60, "key_events": [], "sources": [], "confidence": 0.7}\n```'
+        raw = (
+            '```json\n'
+            '{"sentiment_score": 60, "key_events": [], "sources": [], "confidence": 0.7}'
+            '\n```'
+        )
         result = validate_llm_output(raw, SentimentReport)
         assert isinstance(result, ValidationSuccess)
         assert result.value.sentiment_score == 60

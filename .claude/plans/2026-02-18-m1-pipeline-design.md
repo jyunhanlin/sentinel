@@ -152,6 +152,27 @@ Abstract base class providing:
 - `/coin BTC`: shows most recent proposal for that symbol
 - `format_proposal()`: structured message with direction, entry, SL/TP, confidence, rationale, **model used**
 
+## Future: Strategy Layer (Post-M1)
+
+**Decision:** A+B 混合模式
+
+```
+Strategy.compute() → signals (structured data)
+    │
+    ▼
+[Sentiment + Market + Signals] → ProposerAgent → TradeProposal
+                                                      │
+                                                      ▼
+                                              StrategyGate.check()
+                                              ├── PASS → TG Push
+                                              └── CONFLICT → TG Push (標註衝突)
+```
+
+- **Pre-Proposer:** Strategy signals 作為 ProposerAgent 的額外 context
+- **Post-Proposer:** StrategyGate 做 code-level 硬檢查，衝突時標註但仍推送
+- **Pluggable:** strategies/ 目錄下可放多個策略，config 控制啟用哪些
+- 第一個策略範例：Turtle Head Strategy（熊市假突破做空）
+
 ## Out of Scope
 
 - Risk check engine (M2)

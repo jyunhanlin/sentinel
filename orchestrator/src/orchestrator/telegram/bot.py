@@ -10,7 +10,12 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from orchestrator.telegram.formatters import format_help, format_proposal, format_status, format_welcome
+from orchestrator.telegram.formatters import (
+    format_help,
+    format_proposal,
+    format_status,
+    format_welcome,
+)
 
 if TYPE_CHECKING:
     from orchestrator.pipeline.scheduler import PipelineScheduler

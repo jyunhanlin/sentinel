@@ -20,7 +20,8 @@ class MarketAgent(BaseAgent[MarketInterpretation]):
             '  "trend": "up" | "down" | "range",\n'
             '  "volatility_regime": "low" | "medium" | "high",\n'
             '  "key_levels": [{"type": "support|resistance", "price": <number>}],\n'
-            '  "risk_flags": ["<flag_name>"]  // e.g. funding_elevated, oi_near_ath, volume_declining\n'
+            '  "risk_flags": ["<flag_name>"]  '
+            "// e.g. funding_elevated, oi_near_ath, volume_declining\n"
             "}"
         )
 
@@ -57,6 +58,6 @@ class MarketAgent(BaseAgent[MarketInterpretation]):
 
         lines = []
         for candle in snapshot.ohlcv[-20:]:  # last 20 candles for technical analysis
-            o, h, l, c, v = candle[1], candle[2], candle[3], candle[4], candle[5]
-            lines.append(f"  O={o:.1f} H={h:.1f} L={l:.1f} C={c:.1f} V={v:.0f}")
+            o, h, lo, c, v = candle[1], candle[2], candle[3], candle[4], candle[5]
+            lines.append(f"  O={o:.1f} H={h:.1f} L={lo:.1f} C={c:.1f} V={v:.0f}")
         return "\n".join(lines)

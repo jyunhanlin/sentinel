@@ -1,7 +1,6 @@
-import pytest
 
 from orchestrator.models import EntryOrder, Side, TradeProposal
-from orchestrator.pipeline.aggregator import AggregationResult, aggregate_proposal
+from orchestrator.pipeline.aggregator import aggregate_proposal
 
 
 class TestAggregateProposal:

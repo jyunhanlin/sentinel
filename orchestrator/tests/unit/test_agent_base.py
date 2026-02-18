@@ -1,10 +1,10 @@
-import pytest
 from unittest.mock import AsyncMock
 
-from orchestrator.agents.base import BaseAgent, AgentResult
+import pytest
+
+from orchestrator.agents.base import BaseAgent
 from orchestrator.llm.client import LLMCallResult, LLMClient
-from orchestrator.llm.schema_validator import ValidationFailure, ValidationSuccess
-from orchestrator.models import SentimentReport, KeyEvent
+from orchestrator.models import SentimentReport
 
 
 class FakeAgent(BaseAgent[SentimentReport]):
@@ -33,7 +33,10 @@ class TestBaseAgent:
     async def test_successful_call(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(
-            content='{"sentiment_score": 72, "key_events": [], "sources": ["news"], "confidence": 0.8}',
+            content=(
+                '{"sentiment_score": 72, "key_events": [],'
+                ' "sources": ["news"], "confidence": 0.8}'
+            ),
             model="test",
             input_tokens=100,
             output_tokens=50,
@@ -59,7 +62,10 @@ class TestBaseAgent:
                 latency_ms=500,
             ),
             LLMCallResult(
-                content='{"sentiment_score": 72, "key_events": [], "sources": [], "confidence": 0.8}',
+                content=(
+                    '{"sentiment_score": 72, "key_events": [],'
+                    ' "sources": [], "confidence": 0.8}'
+                ),
                 model="test",
                 input_tokens=150,
                 output_tokens=60,
@@ -97,7 +103,10 @@ class TestBaseAgent:
     async def test_model_override_passed_to_client(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(
-            content='{"sentiment_score": 72, "key_events": [], "sources": [], "confidence": 0.8}',
+            content=(
+                '{"sentiment_score": 72, "key_events": [],'
+                ' "sources": [], "confidence": 0.8}'
+            ),
             model="anthropic/claude-opus-4-6",
             input_tokens=100,
             output_tokens=50,

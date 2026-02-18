@@ -1,10 +1,11 @@
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from orchestrator.agents.market import MarketAgent
 from orchestrator.exchange.data_fetcher import MarketSnapshot
 from orchestrator.llm.client import LLMCallResult, LLMClient
-from orchestrator.models import MarketInterpretation, Trend, VolatilityRegime
+from orchestrator.models import MarketInterpretation, Trend
 
 
 def make_snapshot() -> MarketSnapshot:

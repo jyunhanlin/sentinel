@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
 
 import structlog
 from pydantic import BaseModel
@@ -11,10 +10,8 @@ from orchestrator.llm.schema_validator import ValidationSuccess, validate_llm_ou
 
 logger = structlog.get_logger(__name__)
 
-T = TypeVar("T", bound=BaseModel)
 
-
-class AgentResult(BaseModel, Generic[T]):
+class AgentResult[T: BaseModel](BaseModel):
     output: T
     degraded: bool = False
     llm_calls: list[LLMCallResult] = []
@@ -22,7 +19,7 @@ class AgentResult(BaseModel, Generic[T]):
     model_config = {"arbitrary_types_allowed": True}
 
 
-class BaseAgent(ABC, Generic[T]):
+class BaseAgent[T: BaseModel](ABC):
     output_model: type[T]
 
     def __init__(self, client: LLMClient, max_retries: int = 1) -> None:

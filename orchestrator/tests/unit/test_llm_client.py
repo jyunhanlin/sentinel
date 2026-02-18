@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, patch
 
-from orchestrator.llm.client import LLMClient, LLMCallResult
+import pytest
+
+from orchestrator.llm.client import LLMCallResult, LLMClient
 
 
 class TestLLMClient:

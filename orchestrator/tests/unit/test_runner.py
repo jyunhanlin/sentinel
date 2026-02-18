@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from orchestrator.agents.base import AgentResult
 from orchestrator.exchange.data_fetcher import MarketSnapshot

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from orchestrator.agents.base import AgentResult, BaseAgent
 from orchestrator.exchange.data_fetcher import DataFetcher
-from orchestrator.models import MarketInterpretation, SentimentReport, TradeProposal
+from orchestrator.models import TradeProposal
 from orchestrator.pipeline.aggregator import aggregate_proposal
 from orchestrator.storage.repository import (
     LLMCallRepository,
