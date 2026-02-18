@@ -1,8 +1,8 @@
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from orchestrator.storage.models import PipelineRunRecord
-from orchestrator.storage.repository import PipelineRepository
+from orchestrator.storage.models import LLMCallRecord, PipelineRunRecord, TradeProposalRecord
+from orchestrator.storage.repository import LLMCallRepository, PipelineRepository, TradeProposalRepository
 
 
 @pytest.fixture
@@ -51,3 +51,60 @@ class TestPipelineRepository:
         repo = PipelineRepository(session)
         result = repo.get_run("nonexistent")
         assert result is None
+
+
+class TestLLMCallRepository:
+    def test_save_and_list_calls(self, session):
+        repo = LLMCallRepository(session)
+        repo.save_call(
+            run_id="run-001",
+            agent_type="sentiment",
+            prompt="analyze",
+            response='{"score": 72}',
+            model="test-model",
+            latency_ms=500,
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+        )
+        repo.save_call(
+            run_id="run-001",
+            agent_type="market",
+            prompt="analyze",
+            response='{"trend": "up"}',
+            model="test-model",
+            latency_ms=600,
+            input_tokens=120,
+            output_tokens=60,
+            cost_usd=0.012,
+        )
+        calls = repo.list_by_run("run-001")
+        assert len(calls) == 2
+
+
+class TestTradeProposalRepository:
+    def test_save_and_get_proposal(self, session):
+        repo = TradeProposalRepository(session)
+        repo.save_proposal(
+            proposal_id="prop-001",
+            run_id="run-001",
+            proposal_json='{"side": "long"}',
+            risk_check_result="approved",
+        )
+        result = repo.get_latest_by_symbol("run-001")
+        assert result is not None
+
+    def test_get_latest_proposals(self, session):
+        repo = TradeProposalRepository(session)
+        repo.save_proposal(
+            proposal_id="prop-001",
+            run_id="run-001",
+            proposal_json='{"symbol": "BTC/USDT:USDT"}',
+        )
+        repo.save_proposal(
+            proposal_id="prop-002",
+            run_id="run-002",
+            proposal_json='{"symbol": "ETH/USDT:USDT"}',
+        )
+        results = repo.get_recent(limit=10)
+        assert len(results) == 2
