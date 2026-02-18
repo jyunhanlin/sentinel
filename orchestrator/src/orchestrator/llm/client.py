@@ -44,8 +44,8 @@ class LLMClient:
         response = await acompletion(
             model=effective_model,
             messages=messages,
-            temperature=temperature or self._temperature,
-            max_tokens=max_tokens or self._max_tokens,
+            temperature=temperature if temperature is not None else self._temperature,
+            max_tokens=max_tokens if max_tokens is not None else self._max_tokens,
             api_key=self._api_key,
         )
 
@@ -62,7 +62,7 @@ class LLMClient:
 
         logger.info(
             "llm_call_complete",
-            model=self.model,
+            model=effective_model,
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             latency_ms=result.latency_ms,

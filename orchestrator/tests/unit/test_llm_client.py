@@ -55,6 +55,28 @@ class TestLLMClient:
 
 
     @pytest.mark.asyncio
+    async def test_call_with_zero_temperature(self):
+        client = LLMClient(
+            model="anthropic/claude-sonnet-4-6",
+            api_key="test-key",
+            temperature=0.5,
+        )
+
+        mock_response = AsyncMock()
+        mock_response.choices = [AsyncMock()]
+        mock_response.choices[0].message.content = "response"
+        mock_response.usage.prompt_tokens = 50
+        mock_response.usage.completion_tokens = 25
+
+        with patch("orchestrator.llm.client.acompletion", return_value=mock_response) as mock_call:
+            await client.call(
+                messages=[{"role": "user", "content": "test"}],
+                temperature=0.0,
+            )
+            call_kwargs = mock_call.call_args[1]
+            assert call_kwargs["temperature"] == 0.0  # must not fallback to 0.5
+
+    @pytest.mark.asyncio
     async def test_call_with_model_override(self):
         client = LLMClient(model="anthropic/claude-sonnet-4-6", api_key="test-key")
 
