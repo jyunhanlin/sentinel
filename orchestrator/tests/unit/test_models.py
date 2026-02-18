@@ -1,13 +1,14 @@
 import pytest
 from pydantic import ValidationError
+
 from orchestrator.models import (
-    SentimentReport,
-    KeyEvent,
-    MarketInterpretation,
-    KeyLevel,
-    TradeProposal,
     EntryOrder,
+    KeyEvent,
+    KeyLevel,
+    MarketInterpretation,
+    SentimentReport,
     Side,
+    TradeProposal,
     Trend,
     VolatilityRegime,
 )

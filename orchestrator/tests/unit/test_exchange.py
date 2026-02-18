@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from orchestrator.exchange.client import ExchangeClient
 from orchestrator.exchange.data_fetcher import DataFetcher, MarketSnapshot

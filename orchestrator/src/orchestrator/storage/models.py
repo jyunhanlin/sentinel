@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlmodel import Field, SQLModel
 
@@ -12,7 +12,7 @@ class PipelineRunRecord(SQLModel, table=True):
     run_id: str = Field(unique=True, index=True)
     symbol: str
     status: str = "running"  # running, completed, failed
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class LLMCallRecord(SQLModel, table=True):
@@ -28,7 +28,7 @@ class LLMCallRecord(SQLModel, table=True):
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class TradeProposalRecord(SQLModel, table=True):
@@ -40,7 +40,7 @@ class TradeProposalRecord(SQLModel, table=True):
     proposal_json: str  # Full JSON
     risk_check_result: str = ""  # approved / rejected
     risk_check_reason: str = ""
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class PaperTradeRecord(SQLModel, table=True):
@@ -57,7 +57,7 @@ class PaperTradeRecord(SQLModel, table=True):
     pnl: float = 0.0
     fees: float = 0.0
     status: str = "open"  # open, closed
-    opened_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    opened_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     closed_at: datetime | None = None
 
 
@@ -68,4 +68,4 @@ class AccountSnapshotRecord(SQLModel, table=True):
     equity: float
     open_positions_count: int = 0
     daily_pnl: float = 0.0
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

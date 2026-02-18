@@ -1,8 +1,7 @@
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from orchestrator.storage.database import create_db_engine, init_db
-from orchestrator.storage.models import LLMCallRecord, PipelineRunRecord
+from orchestrator.storage.models import PipelineRunRecord
 from orchestrator.storage.repository import PipelineRepository
 
 
@@ -36,7 +35,7 @@ class TestPipelineRunRecord:
 class TestPipelineRepository:
     def test_save_and_get_run(self, session):
         repo = PipelineRepository(session)
-        run = repo.create_run(run_id="test-001", symbol="BTC/USDT:USDT")
+        repo.create_run(run_id="test-001", symbol="BTC/USDT:USDT")
         fetched = repo.get_run("test-001")
         assert fetched is not None
         assert fetched.run_id == "test-001"
