@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MarketInterpretation",
+  "type": "object",
+  "required": ["trend", "volatility_regime", "key_levels", "risk_flags"],
+  "properties": {
+    "trend": { "type": "string", "enum": ["up", "down", "range"] },
+    "volatility_regime": { "type": "string", "enum": ["low", "medium", "high"] },
+    "key_levels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "price"],
+        "properties": {
+          "type": { "type": "string" },
+          "price": { "type": "number" }
+        }
+      }
+    },
+    "risk_flags": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SentimentReport",
+  "type": "object",
+  "required": ["sentiment_score", "key_events", "sources", "confidence"],
+  "properties": {
+    "sentiment_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "key_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["event", "impact", "source"],
+        "properties": {
+          "event": { "type": "string" },
+          "impact": { "type": "string" },
+          "source": { "type": "string" }
+        }
+      }
+    },
+    "sources": { "type": "array", "items": { "type": "string" } },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}
