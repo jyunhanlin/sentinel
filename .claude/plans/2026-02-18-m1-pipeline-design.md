@@ -173,6 +173,30 @@ Strategy.compute() → signals (structured data)
 - **Pluggable:** strategies/ 目錄下可放多個策略，config 控制啟用哪些
 - 第一個策略範例：Turtle Head Strategy（熊市假突破做空）
 
+## Known Issues (from M1 Review)
+
+### MEDIUM — M2 で対応
+
+| # | Issue | File | Description |
+|---|-------|------|-------------|
+| 1 | `_summarize_ohlcv` 重複 | `agents/sentiment.py`, `agents/market.py` | 幾乎相同的 static method（差 slice 10 vs 20），應抽到共用 utility |
+| 4 | `_latest_results` 只存記憶體 | `telegram/bot.py:42` | Bot 重啟後 `/status` `/coin` 資料消失，應改從 DB 讀取 |
+| 5 | `prompt` 欄位寫死 `"(see messages)"` | `pipeline/runner.py:151` | LLM call 的完整 prompt 沒存下來，影響未來 eval/debug 的 traceability |
+
+### LOW — M3+ 再處理
+
+| # | Issue | File |
+|---|-------|------|
+| 6 | `bot.py` 覆蓋率僅 30% | TG handler 邏輯大多沒測到，M2 加 integration test 時補 |
+| 7 | `scheduler.py` 覆蓋率 76% | `start()/stop()` APScheduler 整合未測，可接受 |
+
+### FIXED (M1 Review)
+
+| # | Issue | Fix |
+|---|-------|-----|
+| 2 | Logger 記錄 `self.model` 而非 `effective_model` | `156d057` — 改為記錄實際使用的 model |
+| 3 | `temperature=0.0` 被 `or` 忽略 | `156d057` — 改用 `is not None` 判斷 |
+
 ## Out of Scope
 
 - Risk check engine (M2)
