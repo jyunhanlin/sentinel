@@ -3,18 +3,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import structlog
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
 )
 
 from orchestrator.telegram.formatters import (
     format_eval_report,
+    format_execution_result,
     format_help,
     format_history,
     format_perf_report,
+    format_pending_approval,
     format_proposal,
     format_risk_rejection,
     format_status,
@@ -24,8 +27,11 @@ from orchestrator.telegram.formatters import (
 )
 
 if TYPE_CHECKING:
+    from orchestrator.approval.manager import ApprovalManager
     from orchestrator.eval.runner import EvalRunner
+    from orchestrator.exchange.data_fetcher import DataFetcher
     from orchestrator.exchange.paper_engine import CloseResult, PaperEngine
+    from orchestrator.execution.executor import OrderExecutor
     from orchestrator.pipeline.scheduler import PipelineScheduler
     from orchestrator.risk.checker import RiskResult
     from orchestrator.storage.repository import (
@@ -59,6 +65,18 @@ class SentinelBot:
         self._proposal_repo: TradeProposalRepository | None = None
         self._snapshot_repo: AccountSnapshotRepository | None = None
         self._eval_runner: EvalRunner | None = None
+        self._approval_manager: ApprovalManager | None = None
+        self._executor: OrderExecutor | None = None
+        self._data_fetcher: DataFetcher | None = None
+
+    def set_approval_manager(self, mgr: ApprovalManager) -> None:
+        self._approval_manager = mgr
+
+    def set_executor(self, executor: OrderExecutor) -> None:
+        self._executor = executor
+
+    def set_data_fetcher(self, fetcher: DataFetcher) -> None:
+        self._data_fetcher = fetcher
 
     def set_scheduler(self, scheduler: PipelineScheduler) -> None:
         self._scheduler = scheduler
@@ -89,6 +107,7 @@ class SentinelBot:
         self._app.add_handler(CommandHandler("resume", self._resume_handler))
         self._app.add_handler(CommandHandler("perf", self._perf_handler))
         self._app.add_handler(CommandHandler("eval", self._eval_handler))
+        self._app.add_handler(CallbackQueryHandler(self._approval_callback))
         return self._app
 
     async def push_proposal(self, chat_id: int, result) -> None:
@@ -296,6 +315,113 @@ class SentinelBot:
             sharpe_ratio=snapshot.sharpe_ratio,
         )
         await update.message.reply_text(format_perf_report(stats))
+
+    async def push_pending_approval(self, chat_id: int, approval) -> int | None:
+        """Push proposal with Approve/Reject keyboard. Returns message_id."""
+        if self._app is None:
+            return None
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "Approve", callback_data=f"approve:{approval.approval_id}"
+                ),
+                InlineKeyboardButton(
+                    "Reject", callback_data=f"reject:{approval.approval_id}"
+                ),
+            ]
+        ])
+        msg = await self._app.bot.send_message(
+            chat_id=chat_id,
+            text=format_pending_approval(approval),
+            reply_markup=keyboard,
+        )
+        return msg.message_id
+
+    async def _approval_callback(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        query = update.callback_query
+        if query is None:
+            return
+        chat_id = update.effective_chat.id if update.effective_chat else 0
+        if not is_admin(chat_id, admin_ids=self.admin_chat_ids):
+            await query.answer("Unauthorized")
+            return
+
+        data = query.data or ""
+        parts = data.split(":", 1)
+        if len(parts) != 2:
+            await query.answer("Invalid action")
+            return
+
+        action, approval_id = parts
+
+        if action == "approve":
+            await self._handle_approve(query, approval_id)
+        elif action == "reject":
+            await self._handle_reject(query, approval_id)
+        else:
+            await query.answer("Unknown action")
+
+    async def _handle_approve(self, query, approval_id: str) -> None:
+        if self._approval_manager is None or self._executor is None:
+            await query.answer("Not configured")
+            return
+
+        approval = self._approval_manager.approve(approval_id)
+        if approval is None:
+            await query.answer("Expired or not found")
+            await query.edit_message_text("Approval expired or already handled.")
+            return
+
+        try:
+            # Re-fetch price for deviation check
+            current_price = approval.snapshot_price
+            if self._data_fetcher is not None:
+                current_price = await self._data_fetcher.fetch_current_price(
+                    approval.proposal.symbol
+                )
+
+            result = await self._executor.execute_entry(
+                approval.proposal, current_price=current_price
+            )
+            sl_tp_ids = await self._executor.place_sl_tp(
+                symbol=approval.proposal.symbol,
+                side=approval.proposal.side.value,
+                quantity=result.quantity,
+                stop_loss=approval.proposal.stop_loss or 0.0,
+                take_profit=approval.proposal.take_profit,
+            )
+
+            await query.answer("Approved!")
+            await query.edit_message_text(format_execution_result(result))
+            logger.info(
+                "approval_executed",
+                approval_id=approval_id,
+                trade_id=result.trade_id,
+                sl_tp_ids=sl_tp_ids,
+            )
+        except Exception as e:
+            logger.error("approval_execution_failed", error=str(e))
+            await query.answer("Execution failed")
+            await query.edit_message_text(f"Execution failed: {e}")
+
+    async def _handle_reject(self, query, approval_id: str) -> None:
+        if self._approval_manager is None:
+            await query.answer("Not configured")
+            return
+
+        approval = self._approval_manager.reject(approval_id)
+        if approval is None:
+            await query.answer("Not found or already handled")
+            await query.edit_message_text("Approval not found or already handled.")
+            return
+
+        await query.answer("Rejected")
+        await query.edit_message_text(
+            f"[REJECTED] {approval.proposal.symbol} {approval.proposal.side.value.upper()}\n"
+            "Trade proposal rejected by admin."
+        )
 
     async def _eval_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
