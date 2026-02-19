@@ -186,6 +186,43 @@ def format_eval_report(report: dict) -> str:
     return "\n".join(lines)
 
 
+def format_pending_approval(approval) -> str:
+    """Format a PendingApproval for TG push with inline keyboard context."""
+    p = approval.proposal
+    lines = [
+        f"[PENDING APPROVAL] {p.symbol}",
+        f"Side: {p.side.value.upper()}",
+        f"Entry: {p.entry.type} @ ~${approval.snapshot_price:,.1f}",
+        f"Risk: {p.position_size_risk_pct}%",
+    ]
+    if p.stop_loss is not None:
+        lines.append(f"SL: ${p.stop_loss:,.1f}")
+    if p.take_profit:
+        tp_str = ", ".join(f"${tp:,.1f}" for tp in p.take_profit)
+        lines.append(f"TP: {tp_str}")
+    lines.append(f"Confidence: {p.confidence:.0%}")
+    lines.append(f"Rationale: {p.rationale}")
+
+    remaining = int((approval.expires_at - approval.created_at).total_seconds() / 60)
+    lines.append(f"\nExpires in {remaining} minutes")
+    return "\n".join(lines)
+
+
+def format_execution_result(result) -> str:
+    """Format an ExecutionResult for TG confirmation."""
+    lines = [
+        f"[EXECUTED] {result.symbol} {result.side.upper()}",
+        f"Mode: {result.mode}",
+        f"Entry: ${result.entry_price:,.1f} | Qty: {result.quantity:.4f}",
+        f"Fees: ${result.fees:,.2f}",
+    ]
+    if result.sl_order_id:
+        lines.append(f"SL order: {result.sl_order_id}")
+    if result.tp_order_id:
+        lines.append(f"TP order: {result.tp_order_id}")
+    return "\n".join(lines)
+
+
 def format_history(trades: list) -> str:
     if not trades:
         return "No closed trades yet."

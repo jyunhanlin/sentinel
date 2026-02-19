@@ -318,6 +318,200 @@ class TestFormatEvalReport:
         assert "100" in text
 
 
+class TestFormatPendingApproval:
+    def test_format_pending_long(self):
+        from datetime import UTC, datetime, timedelta
+
+        from orchestrator.approval.manager import PendingApproval
+        from orchestrator.telegram.formatters import format_pending_approval
+
+        now = datetime.now(UTC)
+        approval = PendingApproval(
+            approval_id="a-001",
+            proposal=TradeProposal(
+                symbol="BTC/USDT:USDT",
+                side=Side.LONG,
+                entry=EntryOrder(type="market"),
+                position_size_risk_pct=1.5,
+                stop_loss=93000.0,
+                take_profit=[97000.0],
+                time_horizon="4h",
+                confidence=0.75,
+                invalid_if=[],
+                rationale="Strong breakout",
+            ),
+            run_id="run-1",
+            snapshot_price=95200.0,
+            created_at=now,
+            expires_at=now + timedelta(minutes=15),
+        )
+        text = format_pending_approval(approval)
+        assert "PENDING" in text
+        assert "BTC/USDT:USDT" in text
+        assert "LONG" in text
+        assert "93,000" in text or "93000" in text
+        assert "15" in text  # timeout mention
+
+
+class TestFormatExecutionResult:
+    def test_format_live_execution(self):
+        from orchestrator.execution.executor import ExecutionResult
+        from orchestrator.telegram.formatters import format_execution_result
+
+        result = ExecutionResult(
+            trade_id="t-001",
+            symbol="BTC/USDT:USDT",
+            side="long",
+            entry_price=95350.0,
+            quantity=0.075,
+            fees=3.57,
+            mode="live",
+            exchange_order_id="binance-001",
+            sl_order_id="sl-001",
+            tp_order_id="tp-001",
+        )
+        text = format_execution_result(result)
+        assert "EXECUTED" in text
+        assert "live" in text.lower()
+        assert "95,350" in text or "95350" in text
+
+    def test_format_paper_execution(self):
+        from orchestrator.execution.executor import ExecutionResult
+        from orchestrator.telegram.formatters import format_execution_result
+
+        result = ExecutionResult(
+            trade_id="t-002",
+            symbol="BTC/USDT:USDT",
+            side="long",
+            entry_price=95200.0,
+            quantity=0.075,
+            fees=3.57,
+            mode="paper",
+        )
+        text = format_execution_result(result)
+        assert "EXECUTED" in text
+        assert "paper" in text.lower()
+
+
+class TestApprovalCallback:
+    @pytest.mark.asyncio
+    async def test_approve_callback_executes(self):
+        """Clicking Approve should execute the order and send confirmation."""
+        from datetime import UTC, datetime, timedelta
+
+        from orchestrator.approval.manager import PendingApproval
+        from orchestrator.execution.executor import ExecutionResult
+
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
+
+        now = datetime.now(UTC)
+        approval = PendingApproval(
+            approval_id="a-001",
+            proposal=TradeProposal(
+                symbol="BTC/USDT:USDT",
+                side=Side.LONG,
+                entry=EntryOrder(type="market"),
+                position_size_risk_pct=1.5,
+                stop_loss=93000.0,
+                take_profit=[97000.0],
+                time_horizon="4h",
+                confidence=0.75,
+                invalid_if=[],
+                rationale="test",
+            ),
+            run_id="run-1",
+            snapshot_price=95200.0,
+            created_at=now,
+            expires_at=now + timedelta(minutes=15),
+        )
+        approval_mgr = MagicMock()
+        approval_mgr.approve.return_value = approval
+        bot.set_approval_manager(approval_mgr)
+
+        executor = AsyncMock()
+        executor.execute_entry.return_value = ExecutionResult(
+            trade_id="t-001",
+            symbol="BTC/USDT:USDT",
+            side="long",
+            entry_price=95250.0,
+            quantity=0.075,
+            fees=3.57,
+            mode="paper",
+        )
+        executor.place_sl_tp.return_value = []
+        bot.set_executor(executor)
+
+        # Mock data fetcher for price re-check
+        data_fetcher = AsyncMock()
+        data_fetcher.fetch_current_price.return_value = 95250.0
+        bot.set_data_fetcher(data_fetcher)
+
+        # Simulate callback
+        query = MagicMock()
+        query.data = "approve:a-001"
+        query.from_user.id = 123
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        context = MagicMock()
+
+        await bot._approval_callback(update, context)
+        executor.execute_entry.assert_called_once()
+        query.answer.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_reject_callback(self):
+        from datetime import UTC, datetime, timedelta
+
+        from orchestrator.approval.manager import PendingApproval
+
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
+
+        now = datetime.now(UTC)
+        approval = PendingApproval(
+            approval_id="a-002",
+            proposal=TradeProposal(
+                symbol="BTC/USDT:USDT",
+                side=Side.LONG,
+                entry=EntryOrder(type="market"),
+                position_size_risk_pct=1.5,
+                stop_loss=93000.0,
+                take_profit=[97000.0],
+                time_horizon="4h",
+                confidence=0.75,
+                invalid_if=[],
+                rationale="test",
+            ),
+            run_id="run-1",
+            snapshot_price=95200.0,
+            created_at=now,
+            expires_at=now + timedelta(minutes=15),
+        )
+        approval_mgr = MagicMock()
+        approval_mgr.reject.return_value = approval
+        bot.set_approval_manager(approval_mgr)
+
+        query = MagicMock()
+        query.data = "reject:a-002"
+        query.from_user.id = 123
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        context = MagicMock()
+
+        await bot._approval_callback(update, context)
+        approval_mgr.reject.assert_called_once_with("a-002")
+        query.edit_message_text.assert_called()
+
+
 class TestBotStatusFromDB:
     def test_bot_has_proposal_repo_setter(self):
         """Verify the bot accepts a proposal_repo for DB-backed status."""
