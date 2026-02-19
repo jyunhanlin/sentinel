@@ -221,11 +221,14 @@ class PipelineRunner:
             )
 
     def _save_llm_calls(self, run_id: str, agent_type: str, result: AgentResult) -> None:
+        import json
+
+        prompt_json = json.dumps(result.messages, ensure_ascii=False) if result.messages else ""
         for call in result.llm_calls:
             self._llm_call_repo.save_call(
                 run_id=run_id,
                 agent_type=agent_type,
-                prompt="(see messages)",
+                prompt=prompt_json,
                 response=call.content,
                 model=call.model,
                 latency_ms=call.latency_ms,

@@ -15,6 +15,7 @@ class AgentResult[T: BaseModel](BaseModel):
     output: T
     degraded: bool = False
     llm_calls: list[LLMCallResult] = []
+    messages: list[dict] = []
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -46,6 +47,7 @@ class BaseAgent[T: BaseModel](ABC):
                     output=validation.value,
                     degraded=False,
                     llm_calls=llm_calls,
+                    messages=messages,
                 )
 
             # Retry with error feedback
@@ -69,6 +71,7 @@ class BaseAgent[T: BaseModel](ABC):
             output=self._get_default_output(),
             degraded=True,
             llm_calls=llm_calls,
+            messages=messages,
         )
 
     @abstractmethod

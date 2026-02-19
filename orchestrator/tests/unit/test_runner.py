@@ -255,16 +255,16 @@ class TestPipelineRunnerWithRisk:
 
         sentiment_agent = AsyncMock()
         sentiment_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[],
+            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
         )
         market_agent = AsyncMock()
         market_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[],
+            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
         )
         proposer_agent = AsyncMock()
         proposer_agent.analyze.return_value = MagicMock(
             output=_make_proposal(side=Side.LONG, risk_pct=1.0),
-            degraded=False, llm_calls=[],
+            degraded=False, llm_calls=[], messages=[],
         )
 
         risk_checker = MagicMock()
@@ -305,16 +305,16 @@ class TestPipelineRunnerWithRisk:
 
         sentiment_agent = AsyncMock()
         sentiment_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[],
+            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
         )
         market_agent = AsyncMock()
         market_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[],
+            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
         )
         proposer_agent = AsyncMock()
         proposer_agent.analyze.return_value = MagicMock(
             output=_make_proposal(side=Side.LONG, risk_pct=3.0),
-            degraded=False, llm_calls=[],
+            degraded=False, llm_calls=[], messages=[],
         )
 
         risk_checker = MagicMock()
@@ -346,3 +346,30 @@ class TestPipelineRunnerWithRisk:
         result = await runner.execute("BTC/USDT:USDT")
         assert result.status == "risk_rejected"
         paper_engine.open_position.assert_not_called()
+
+
+class TestSaveLLMCalls:
+    def test_saves_full_messages_json(self):
+        """_save_llm_calls should store full messages, not placeholder."""
+        llm_call_repo = MagicMock()
+        runner = PipelineRunner(
+            data_fetcher=MagicMock(),
+            sentiment_agent=MagicMock(),
+            market_agent=MagicMock(),
+            proposer_agent=MagicMock(),
+            pipeline_repo=MagicMock(),
+            llm_call_repo=llm_call_repo,
+            proposal_repo=MagicMock(),
+        )
+        mock_result = MagicMock()
+        mock_result.llm_calls = [MagicMock(
+            content='{"test": true}', model="test", latency_ms=100,
+            input_tokens=50, output_tokens=25,
+        )]
+        mock_result.messages = [{"role": "user", "content": "analyze"}]
+
+        runner._save_llm_calls("run-1", "sentiment", mock_result)
+
+        call_kwargs = llm_call_repo.save_call.call_args[1]
+        assert call_kwargs["prompt"] != "(see messages)"
+        assert "analyze" in call_kwargs["prompt"]
