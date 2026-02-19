@@ -32,5 +32,27 @@ class ExchangeClient:
     async def fetch_ticker(self, symbol: str) -> dict:
         return await self._exchange.fetch_ticker(symbol)
 
+    async def create_market_order(
+        self, symbol: str, side: str, amount: float
+    ) -> dict:
+        return await self._exchange.create_order(symbol, "market", side, amount)
+
+    async def create_stop_order(
+        self, symbol: str, side: str, amount: float, *, stop_price: float
+    ) -> dict:
+        return await self._exchange.create_order(
+            symbol,
+            "stop_market",
+            side,
+            amount,
+            params={"stopPrice": stop_price},
+        )
+
+    async def cancel_order(self, order_id: str, symbol: str) -> dict:
+        return await self._exchange.cancel_order(order_id, symbol)
+
+    async def fetch_order(self, order_id: str, symbol: str) -> dict:
+        return await self._exchange.fetch_order(order_id, symbol)
+
     async def close(self) -> None:
         await self._exchange.close()
