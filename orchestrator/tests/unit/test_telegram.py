@@ -248,6 +248,73 @@ class TestFormatHelpUpdated:
         assert "/resume" in text
 
 
+class TestFormatPerfReport:
+    def test_format_perf_report_positive(self):
+        from orchestrator.stats.calculator import PerformanceStats
+        from orchestrator.telegram.formatters import format_perf_report
+
+        stats = PerformanceStats(
+            total_pnl=1250.0, total_pnl_pct=12.5, win_rate=0.625,
+            total_trades=16, winning_trades=10, losing_trades=6,
+            profit_factor=1.85, max_drawdown_pct=4.2, sharpe_ratio=1.32,
+        )
+        text = format_perf_report(stats)
+        assert "+$1,250.00" in text
+        assert "12.5%" in text
+        assert "62.5%" in text
+        assert "10/16" in text
+        assert "1.85" in text
+        assert "4.2%" in text
+        assert "1.32" in text
+
+    def test_format_perf_report_no_trades(self):
+        from orchestrator.stats.calculator import PerformanceStats
+        from orchestrator.telegram.formatters import format_perf_report
+
+        stats = PerformanceStats(
+            total_pnl=0.0, total_pnl_pct=0.0, win_rate=0.0,
+            total_trades=0, winning_trades=0, losing_trades=0,
+            profit_factor=0.0, max_drawdown_pct=0.0, sharpe_ratio=0.0,
+        )
+        text = format_perf_report(stats)
+        assert "No trades" in text or "0" in text
+
+
+class TestFormatEvalReport:
+    def test_format_eval_report_with_failures(self):
+        from orchestrator.telegram.formatters import format_eval_report
+
+        report = {
+            "dataset_name": "golden_v1",
+            "total_cases": 5,
+            "passed_cases": 4,
+            "failed_cases": 1,
+            "accuracy": 0.8,
+            "consistency_score": 0.933,
+            "failures": [{"case_id": "bear_divergence", "reason": "expected SHORT, got LONG"}],
+        }
+        text = format_eval_report(report)
+        assert "golden_v1" in text
+        assert "80" in text
+        assert "bear_divergence" in text
+        assert "93" in text
+
+    def test_format_eval_report_all_passed(self):
+        from orchestrator.telegram.formatters import format_eval_report
+
+        report = {
+            "dataset_name": "golden_v1",
+            "total_cases": 5,
+            "passed_cases": 5,
+            "failed_cases": 0,
+            "accuracy": 1.0,
+            "consistency_score": 1.0,
+            "failures": [],
+        }
+        text = format_eval_report(report)
+        assert "100" in text
+
+
 class TestBotStatusFromDB:
     def test_bot_has_proposal_repo_setter(self):
         """Verify the bot accepts a proposal_repo for DB-backed status."""

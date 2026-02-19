@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from orchestrator.exchange.paper_engine import CloseResult
 from orchestrator.risk.checker import RiskResult
+from orchestrator.stats.calculator import PerformanceStats
 
 if TYPE_CHECKING:
     from orchestrator.pipeline.runner import PipelineResult
@@ -28,6 +29,8 @@ def format_help() -> str:
         "/run <symbol> - Trigger pipeline for specific symbol\n"
         "/run <symbol> sonnet|opus - Trigger with specific model\n"
         "/history - Recent trade records\n"
+        "/perf - Performance report (PnL, win rate, Sharpe, etc.)\n"
+        "/eval - Run LLM evaluation and show results\n"
         "/resume - Un-pause pipeline after risk pause\n"
         "/help - Show this message"
     )
@@ -139,6 +142,46 @@ def format_status_from_records(records: list) -> str:
             lines.append(f"  {symbol}: {side} (confidence: {conf_str}) [{status}]")
         except (json.JSONDecodeError, AttributeError):
             lines.append(f"  [parse error] proposal_id={r.proposal_id}")
+
+    return "\n".join(lines)
+
+
+def format_perf_report(stats: PerformanceStats) -> str:
+    if stats.total_trades == 0:
+        return "No trades yet. Performance report will be available after closing positions."
+
+    pnl_sign = "+" if stats.total_pnl >= 0 else "-"
+    pnl_str = f"{pnl_sign}${abs(stats.total_pnl):,.2f}"
+    pnl_pct_sign = "+" if stats.total_pnl_pct >= 0 else ""
+    pf_str = "inf" if stats.profit_factor == float("inf") else f"{stats.profit_factor:.2f}"
+
+    lines = [
+        "Performance Report",
+        "─────────────────────",
+        f"Total PnL:      {pnl_str} ({pnl_pct_sign}{stats.total_pnl_pct:.1f}%)",
+        f"Win Rate:       {stats.win_rate:.1%} ({stats.winning_trades}/{stats.total_trades})",
+        f"Profit Factor:  {pf_str}",
+        f"Max Drawdown:   {stats.max_drawdown_pct:.1f}%",
+        f"Sharpe Ratio:   {stats.sharpe_ratio:.2f}",
+        "─────────────────────",
+    ]
+    return "\n".join(lines)
+
+
+def format_eval_report(report: dict) -> str:
+    lines = [
+        f"Eval Report ({report['dataset_name']})",
+        "──────────────────────────",
+        f"Cases: {report['total_cases']} | "
+        f"Passed: {report['passed_cases']} | Failed: {report['failed_cases']}",
+        f"Accuracy: {report['accuracy']:.0%}",
+    ]
+    if report.get("consistency_score") is not None:
+        lines.append(f"Consistency: {report['consistency_score']:.1%}")
+    lines.append("──────────────────────────")
+
+    for f in report.get("failures", []):
+        lines.append(f"  {f['case_id']}: {f['reason']}")
 
     return "\n".join(lines)
 
