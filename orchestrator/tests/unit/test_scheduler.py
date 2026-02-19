@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -87,3 +87,42 @@ class TestPipelineScheduler:
         mock_runner.execute.assert_called_once_with(
             "BTC/USDT:USDT", model_override="anthropic/claude-opus-4-6"
         )
+
+
+class TestSchedulerLifecycle:
+    def test_start_creates_and_starts_scheduler(self):
+        runner = MagicMock()
+        scheduler = PipelineScheduler(
+            runner=runner, symbols=["BTC/USDT:USDT"], interval_minutes=15,
+        )
+        with patch("orchestrator.pipeline.scheduler.AsyncIOScheduler") as mock_cls:
+            scheduler.start()
+            mock_cls.return_value.start.assert_called_once()
+            mock_cls.return_value.add_job.assert_called_once()
+
+    def test_start_with_premium_model_adds_two_jobs(self):
+        runner = MagicMock()
+        scheduler = PipelineScheduler(
+            runner=runner, symbols=["BTC/USDT:USDT"],
+            interval_minutes=15, premium_model="anthropic/claude-opus-4-6",
+        )
+        with patch("orchestrator.pipeline.scheduler.AsyncIOScheduler") as mock_cls:
+            scheduler.start()
+            assert mock_cls.return_value.add_job.call_count == 2
+
+    def test_stop_shuts_down_scheduler(self):
+        runner = MagicMock()
+        scheduler = PipelineScheduler(
+            runner=runner, symbols=["BTC/USDT:USDT"], interval_minutes=15,
+        )
+        with patch("orchestrator.pipeline.scheduler.AsyncIOScheduler") as mock_cls:
+            scheduler.start()
+            scheduler.stop()
+            mock_cls.return_value.shutdown.assert_called_once_with(wait=False)
+
+    def test_stop_without_start_is_safe(self):
+        runner = MagicMock()
+        scheduler = PipelineScheduler(
+            runner=runner, symbols=["BTC/USDT:USDT"], interval_minutes=15,
+        )
+        scheduler.stop()  # Should not raise
