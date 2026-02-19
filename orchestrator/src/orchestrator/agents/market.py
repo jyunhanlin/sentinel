@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from orchestrator.agents.base import BaseAgent
+from orchestrator.agents.utils import summarize_ohlcv
 from orchestrator.exchange.data_fetcher import MarketSnapshot
 from orchestrator.models import MarketInterpretation, Trend, VolatilityRegime
 
@@ -25,7 +26,7 @@ class MarketAgent(BaseAgent[MarketInterpretation]):
             "}"
         )
 
-        ohlcv_summary = self._summarize_ohlcv(snapshot)
+        ohlcv_summary = summarize_ohlcv(snapshot.ohlcv, max_candles=20)
 
         user_prompt = (
             f"Symbol: {snapshot.symbol}\n"
@@ -50,14 +51,3 @@ class MarketAgent(BaseAgent[MarketInterpretation]):
             key_levels=[],
             risk_flags=["analysis_degraded"],
         )
-
-    @staticmethod
-    def _summarize_ohlcv(snapshot: MarketSnapshot) -> str:
-        if not snapshot.ohlcv:
-            return "No OHLCV data available"
-
-        lines = []
-        for candle in snapshot.ohlcv[-20:]:  # last 20 candles for technical analysis
-            o, h, lo, c, v = candle[1], candle[2], candle[3], candle[4], candle[5]
-            lines.append(f"  O={o:.1f} H={h:.1f} L={lo:.1f} C={c:.1f} V={v:.0f}")
-        return "\n".join(lines)
