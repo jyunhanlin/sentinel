@@ -120,6 +120,29 @@ def format_risk_rejection(
     return "\n".join(lines)
 
 
+def format_status_from_records(records: list) -> str:
+    """Format status from DB TradeProposalRecords (fallback when no in-memory results)."""
+    import json
+
+    if not records:
+        return "No pipeline results yet. Use /run to trigger analysis."
+
+    lines = ["Latest proposals (from DB):\n"]
+    for r in records:
+        try:
+            proposal = json.loads(r.proposal_json)
+            symbol = proposal.get("symbol", "?")
+            side = proposal.get("side", "?").upper()
+            confidence = proposal.get("confidence", 0)
+            conf_str = f"{confidence:.0%}" if isinstance(confidence, float) else str(confidence)
+            status = r.risk_check_result or "unknown"
+            lines.append(f"  {symbol}: {side} (confidence: {conf_str}) [{status}]")
+        except (json.JSONDecodeError, AttributeError):
+            lines.append(f"  [parse error] proposal_id={r.proposal_id}")
+
+    return "\n".join(lines)
+
+
 def format_history(trades: list) -> str:
     if not trades:
         return "No closed trades yet."

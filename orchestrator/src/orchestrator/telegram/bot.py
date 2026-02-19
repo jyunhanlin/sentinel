@@ -16,6 +16,7 @@ from orchestrator.telegram.formatters import (
     format_proposal,
     format_risk_rejection,
     format_status,
+    format_status_from_records,
     format_trade_report,
     format_welcome,
 )
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
     from orchestrator.exchange.paper_engine import CloseResult, PaperEngine
     from orchestrator.pipeline.scheduler import PipelineScheduler
     from orchestrator.risk.checker import RiskResult
-    from orchestrator.storage.repository import PaperTradeRepository
+    from orchestrator.storage.repository import PaperTradeRepository, TradeProposalRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -48,6 +49,7 @@ class SentinelBot:
         self._latest_results: dict[str, object] = {}  # symbol → PipelineResult
         self._paper_engine: PaperEngine | None = None
         self._trade_repo: PaperTradeRepository | None = None
+        self._proposal_repo: TradeProposalRepository | None = None
 
     def set_scheduler(self, scheduler: PipelineScheduler) -> None:
         self._scheduler = scheduler
@@ -57,6 +59,9 @@ class SentinelBot:
 
     def set_trade_repo(self, repo: PaperTradeRepository) -> None:
         self._trade_repo = repo
+
+    def set_proposal_repo(self, repo: TradeProposalRepository) -> None:
+        self._proposal_repo = repo
 
     def build(self) -> Application:
         self._app = Application.builder().token(self.token).build()
@@ -128,7 +133,13 @@ class SentinelBot:
         if not await self._check_admin(update):
             return
         results = list(self._latest_results.values())
-        await update.message.reply_text(format_status(results))
+        if results:
+            await update.message.reply_text(format_status(results))
+        elif self._proposal_repo is not None:
+            records = self._proposal_repo.get_recent(limit=10)
+            await update.message.reply_text(format_status_from_records(records))
+        else:
+            await update.message.reply_text(format_status([]))
 
     async def _coin_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -141,19 +152,36 @@ class SentinelBot:
             return
 
         query = args[0].upper()
-        # Find matching symbol
+        # Find matching symbol from in-memory cache
         matching = [
             r for sym, r in self._latest_results.items() if query in sym.upper()
         ]
 
-        if not matching:
-            await update.message.reply_text(
-                f"No recent analysis for {query}. Use /run to trigger analysis."
-            )
+        if matching:
+            for result in matching:
+                await update.message.reply_text(format_proposal(result))
             return
 
-        for result in matching:
-            await update.message.reply_text(format_proposal(result))
+        # Fallback: search DB records
+        if self._proposal_repo is not None:
+            import json
+
+            records = self._proposal_repo.get_recent(limit=20)
+            matching_records = []
+            for r in records:
+                try:
+                    proposal = json.loads(r.proposal_json)
+                    if query in proposal.get("symbol", "").upper():
+                        matching_records.append(r)
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+            if matching_records:
+                await update.message.reply_text(format_status_from_records(matching_records))
+                return
+
+        await update.message.reply_text(
+            f"No recent analysis for {query}. Use /run to trigger analysis."
+        )
 
     async def _run_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE

@@ -4,7 +4,7 @@ from orchestrator.exchange.paper_engine import CloseResult
 from orchestrator.models import EntryOrder, Side, TradeProposal
 from orchestrator.pipeline.runner import PipelineResult
 from orchestrator.risk.checker import RiskResult
-from orchestrator.storage.models import PaperTradeRecord
+from orchestrator.storage.models import PaperTradeRecord, TradeProposalRecord
 from orchestrator.telegram.bot import SentinelBot, is_admin
 from orchestrator.telegram.formatters import (
     format_help,
@@ -246,3 +246,26 @@ class TestFormatHelpUpdated:
     def test_help_includes_resume(self):
         text = format_help()
         assert "/resume" in text
+
+
+class TestBotStatusFromDB:
+    def test_bot_has_proposal_repo_setter(self):
+        """Verify the bot accepts a proposal_repo for DB-backed status."""
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
+        assert hasattr(bot, "set_proposal_repo")
+
+    def test_format_status_from_records(self):
+        """format_status_from_records should render DB proposal records."""
+        from orchestrator.telegram.formatters import format_status_from_records
+
+        record = TradeProposalRecord(
+            proposal_id="p-001",
+            run_id="run-1",
+            proposal_json='{"symbol":"BTC/USDT:USDT","side":"long","entry":{"type":"market"},'
+            '"position_size_risk_pct":1.5,"stop_loss":93000.0,"take_profit":[97000.0],'
+            '"time_horizon":"4h","confidence":0.75,"invalid_if":[],"rationale":"test"}',
+            risk_check_result="approved",
+        )
+        text = format_status_from_records([record])
+        assert "BTC/USDT:USDT" in text
+        assert "approved" in text.lower()
