@@ -356,6 +356,342 @@ class TestEvalHandler:
         assert "not configured" in text.lower() or "not available" in text.lower()
 
 
+def _make_update(chat_id: int = 123):
+    update = MagicMock()
+    update.effective_chat.id = chat_id
+    update.message.reply_text = AsyncMock()
+    return update
+
+
+def _make_context(args=None):
+    ctx = MagicMock()
+    ctx.args = args or []
+    return ctx
+
+
+class TestStartHandler:
+    @pytest.mark.asyncio
+    async def test_start_replies_welcome(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        update = _make_update(123)
+        await bot._start_handler(update, _make_context())
+        text = update.message.reply_text.call_args[0][0]
+        assert "Sentinel" in text
+
+    @pytest.mark.asyncio
+    async def test_start_rejects_non_admin(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        update = _make_update(999)
+        await bot._start_handler(update, _make_context())
+        update.message.reply_text.assert_not_called()
+
+
+class TestHelpHandler:
+    @pytest.mark.asyncio
+    async def test_help_replies(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        update = _make_update(123)
+        await bot._help_handler(update, _make_context())
+        text = update.message.reply_text.call_args[0][0]
+        assert "/status" in text
+
+
+def _make_pipeline_result():
+    return PipelineResult(
+        run_id="r1", symbol="BTC/USDT:USDT", status="completed",
+        proposal=TradeProposal(
+            symbol="BTC/USDT:USDT", side=Side.LONG,
+            entry=EntryOrder(type="market"),
+            position_size_risk_pct=1.0, stop_loss=93000.0,
+            take_profit=[97000.0], time_horizon="4h",
+            confidence=0.7, invalid_if=[], rationale="test",
+        ),
+    )
+
+
+class TestStatusHandler:
+    @pytest.mark.asyncio
+    async def test_status_with_results(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        bot._latest_results = {"BTC/USDT:USDT": _make_pipeline_result()}
+        update = _make_update(123)
+        await bot._status_handler(update, _make_context())
+        update.message.reply_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_status_empty_with_proposal_repo(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_repo = MagicMock()
+        mock_repo.get_recent.return_value = []
+        bot.set_proposal_repo(mock_repo)
+        update = _make_update(123)
+        await bot._status_handler(update, _make_context())
+        update.message.reply_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_status_empty_no_repo(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        update = _make_update(123)
+        await bot._status_handler(update, _make_context())
+        text = update.message.reply_text.call_args[0][0]
+        assert "No" in text or "no" in text
+
+
+class TestCoinHandler:
+    @pytest.mark.asyncio
+    async def test_coin_no_args(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        update = _make_update(123)
+        await bot._coin_handler(update, _make_context())
+        text = update.message.reply_text.call_args[0][0]
+        assert "Usage" in text
+
+    @pytest.mark.asyncio
+    async def test_coin_matching_result(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        bot._latest_results = {"BTC/USDT:USDT": _make_pipeline_result()}
+        update = _make_update(123)
+        await bot._coin_handler(update, _make_context(args=["BTC"]))
+        update.message.reply_text.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_coin_no_match(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        update = _make_update(123)
+        await bot._coin_handler(update, _make_context(args=["XYZ"]))
+        text = update.message.reply_text.call_args[0][0]
+        assert "No recent" in text
+
+
+class TestRunHandler:
+    @pytest.mark.asyncio
+    async def test_run_no_scheduler(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        update = _make_update(123)
+        await bot._run_handler(update, _make_context())
+        text = update.message.reply_text.call_args[0][0]
+        assert "not configured" in text.lower() or "Pipeline" in text
+
+    @pytest.mark.asyncio
+    async def test_run_all_symbols(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_scheduler = MagicMock()
+        mock_scheduler.symbols = ["BTC/USDT:USDT"]
+        mock_scheduler.run_once = AsyncMock(return_value=[])
+        bot.set_scheduler(mock_scheduler)
+        update = _make_update(123)
+        await bot._run_handler(update, _make_context())
+        mock_scheduler.run_once.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_with_model_alias(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_scheduler = MagicMock()
+        mock_scheduler.symbols = ["BTC/USDT:USDT"]
+        mock_scheduler.run_once = AsyncMock(return_value=[])
+        bot.set_scheduler(mock_scheduler)
+        update = _make_update(123)
+        await bot._run_handler(update, _make_context(args=["opus"]))
+        call_kwargs = mock_scheduler.run_once.call_args[1]
+        assert call_kwargs.get("model_override") == "anthropic/claude-opus-4-6"
+
+
+class TestHistoryHandler:
+    @pytest.mark.asyncio
+    async def test_history_no_repo(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        update = _make_update(123)
+        await bot._history_handler(update, _make_context())
+        text = update.message.reply_text.call_args[0][0]
+        assert "not configured" in text.lower() or "Paper" in text
+
+    @pytest.mark.asyncio
+    async def test_history_with_trades(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_repo = MagicMock()
+        mock_repo.get_recent_closed.return_value = []
+        bot.set_trade_repo(mock_repo)
+        update = _make_update(123)
+        await bot._history_handler(update, _make_context())
+        update.message.reply_text.assert_called_once()
+
+
+class TestResumeHandler:
+    @pytest.mark.asyncio
+    async def test_resume_no_engine(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        update = _make_update(123)
+        await bot._resume_handler(update, _make_context())
+        text = update.message.reply_text.call_args[0][0]
+        assert "not configured" in text.lower() or "Paper" in text
+
+    @pytest.mark.asyncio
+    async def test_resume_unpauses(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_engine = MagicMock()
+        bot.set_paper_engine(mock_engine)
+        update = _make_update(123)
+        await bot._resume_handler(update, _make_context())
+        mock_engine.set_paused.assert_called_once_with(False)
+        text = update.message.reply_text.call_args[0][0]
+        assert "resumed" in text.lower()
+
+
+class TestPushMethods:
+    @pytest.mark.asyncio
+    async def test_push_proposal_no_app(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        await bot.push_proposal(123, MagicMock())
+        # Should return silently when _app is None
+
+    @pytest.mark.asyncio
+    async def test_push_close_report_no_app(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        await bot.push_close_report(MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_push_risk_rejection_no_app(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        await bot.push_risk_rejection(
+            symbol="BTC", side="LONG", entry_price=95000.0,
+            risk_result=MagicMock(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_push_to_admins(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123, 456])
+        bot._app = MagicMock()
+        bot._app.bot.send_message = AsyncMock()
+        await bot.push_to_admins(_make_pipeline_result())
+        assert bot._app.bot.send_message.call_count == 2
+
+
+class TestBuildBot:
+    def test_build_registers_handlers(self):
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
+        app = bot.build()
+        # Should have registered handlers without error
+        assert app is not None
+        assert bot._app is not None
+
+
+class TestPushWithApp:
+    @pytest.mark.asyncio
+    async def test_push_proposal_with_app(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        bot._app = MagicMock()
+        bot._app.bot.send_message = AsyncMock()
+        await bot.push_proposal(123, _make_pipeline_result())
+        bot._app.bot.send_message.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_push_close_report_with_app(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123, 456])
+        bot._app = MagicMock()
+        bot._app.bot.send_message = AsyncMock()
+        result = CloseResult(
+            trade_id="t-1", symbol="BTC/USDT:USDT", side=Side.LONG,
+            entry_price=95000.0, exit_price=93000.0, quantity=0.01,
+            pnl=-20.0, fees=1.0, reason="sl",
+        )
+        await bot.push_close_report(result)
+        assert bot._app.bot.send_message.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_push_risk_rejection_with_app(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        bot._app = MagicMock()
+        bot._app.bot.send_message = AsyncMock()
+        rr = RiskResult(
+            approved=False, rule_violated="max_single_risk",
+            reason="Too risky", action="reject",
+        )
+        await bot.push_risk_rejection(
+            symbol="BTC/USDT:USDT", side="LONG",
+            entry_price=95000.0, risk_result=rr,
+        )
+        bot._app.bot.send_message.assert_called_once()
+
+
+class TestRunHandlerAdvanced:
+    @pytest.mark.asyncio
+    async def test_run_with_symbol_arg(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_scheduler = MagicMock()
+        mock_scheduler.symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+        result = _make_pipeline_result()
+        mock_scheduler.run_once = AsyncMock(return_value=[result])
+        bot.set_scheduler(mock_scheduler)
+        update = _make_update(123)
+        await bot._run_handler(update, _make_context(args=["BTC"]))
+        call_kwargs = mock_scheduler.run_once.call_args[1]
+        assert call_kwargs["symbols"] == ["BTC/USDT:USDT"]
+
+    @pytest.mark.asyncio
+    async def test_run_unknown_symbol(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_scheduler = MagicMock()
+        mock_scheduler.symbols = ["BTC/USDT:USDT"]
+        bot.set_scheduler(mock_scheduler)
+        update = _make_update(123)
+        await bot._run_handler(update, _make_context(args=["XYZ"]))
+        text = update.message.reply_text.call_args[0][0]
+        assert "Unknown" in text
+
+    @pytest.mark.asyncio
+    async def test_run_with_premium_model_setting(self):
+        bot = SentinelBot(
+            token="t", admin_chat_ids=[123],
+            premium_model="anthropic/claude-opus-4-6",
+        )
+        mock_scheduler = MagicMock()
+        mock_scheduler.symbols = ["BTC/USDT:USDT"]
+        mock_scheduler.run_once = AsyncMock(return_value=[])
+        bot.set_scheduler(mock_scheduler)
+        update = _make_update(123)
+        await bot._run_handler(update, _make_context())
+        call_kwargs = mock_scheduler.run_once.call_args[1]
+        assert call_kwargs.get("model_override") == "anthropic/claude-opus-4-6"
+
+
+class TestCoinHandlerDB:
+    @pytest.mark.asyncio
+    async def test_coin_db_fallback(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_repo = MagicMock()
+        record = TradeProposalRecord(
+            proposal_id="p-1", run_id="r-1",
+            proposal_json='{"symbol":"BTC/USDT:USDT","side":"long"}',
+            risk_check_result="approved",
+        )
+        mock_repo.get_recent.return_value = [record]
+        bot.set_proposal_repo(mock_repo)
+        update = _make_update(123)
+        await bot._coin_handler(update, _make_context(args=["BTC"]))
+        update.message.reply_text.assert_called()
+
+
+class TestEvalHandlerWithRunner:
+    @pytest.mark.asyncio
+    async def test_eval_handler_runs(self):
+        from orchestrator.eval.runner import CaseResult, EvalReport, ScoreResult
+
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_runner = AsyncMock()
+        mock_runner.run_default.return_value = EvalReport(
+            dataset_name="golden_v1", total_cases=1,
+            passed_cases=1, failed_cases=0, accuracy=1.0,
+            case_results=[
+                CaseResult(case_id="test", passed=True, scores=[]),
+            ],
+        )
+        bot.set_eval_runner(mock_runner)
+        update = _make_update(123)
+        await bot._eval_handler(update, _make_context())
+        # Should have 2 calls: "Running evaluation..." and the report
+        assert update.message.reply_text.call_count == 2
+
+
 class TestPerfHandler:
     @pytest.mark.asyncio
     async def test_perf_handler_returns_stats(self):
