@@ -1,10 +1,14 @@
+from datetime import UTC, datetime
+
 from orchestrator.exchange.paper_engine import CloseResult
 from orchestrator.models import EntryOrder, Side, TradeProposal
 from orchestrator.pipeline.runner import PipelineResult
 from orchestrator.risk.checker import RiskResult
+from orchestrator.storage.models import PaperTradeRecord
 from orchestrator.telegram.bot import SentinelBot, is_admin
 from orchestrator.telegram.formatters import (
     format_help,
+    format_history,
     format_proposal,
     format_risk_rejection,
     format_status,
@@ -213,3 +217,32 @@ class TestFormatRiskRejection:
             risk_result=risk_result,
         )
         assert "[RISK PAUSED]" in text
+
+
+class TestFormatHistory:
+    def test_format_empty_history(self):
+        text = format_history([])
+        assert "No closed trades" in text
+
+    def test_format_history_with_trades(self):
+        trade = PaperTradeRecord(
+            trade_id="t-001", proposal_id="p-001",
+            symbol="BTC/USDT:USDT", side="long",
+            entry_price=95000.0, exit_price=93000.0,
+            quantity=0.075, pnl=-150.0, fees=7.13,
+            status="closed", risk_pct=1.5,
+            opened_at=datetime.now(UTC), closed_at=datetime.now(UTC),
+        )
+        text = format_history([trade])
+        assert "BTC/USDT:USDT" in text
+        assert "-$150.00" in text
+
+
+class TestFormatHelpUpdated:
+    def test_help_includes_history(self):
+        text = format_help()
+        assert "/history" in text
+
+    def test_help_includes_resume(self):
+        text = format_help()
+        assert "/resume" in text

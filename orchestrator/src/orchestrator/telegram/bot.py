@@ -12,13 +12,19 @@ from telegram.ext import (
 
 from orchestrator.telegram.formatters import (
     format_help,
+    format_history,
     format_proposal,
+    format_risk_rejection,
     format_status,
+    format_trade_report,
     format_welcome,
 )
 
 if TYPE_CHECKING:
+    from orchestrator.exchange.paper_engine import CloseResult, PaperEngine
     from orchestrator.pipeline.scheduler import PipelineScheduler
+    from orchestrator.risk.checker import RiskResult
+    from orchestrator.storage.repository import PaperTradeRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -40,9 +46,17 @@ class SentinelBot:
         self._app: Application | None = None
         self._scheduler: PipelineScheduler | None = None
         self._latest_results: dict[str, object] = {}  # symbol → PipelineResult
+        self._paper_engine: PaperEngine | None = None
+        self._trade_repo: PaperTradeRepository | None = None
 
     def set_scheduler(self, scheduler: PipelineScheduler) -> None:
         self._scheduler = scheduler
+
+    def set_paper_engine(self, engine: PaperEngine) -> None:
+        self._paper_engine = engine
+
+    def set_trade_repo(self, repo: PaperTradeRepository) -> None:
+        self._trade_repo = repo
 
     def build(self) -> Application:
         self._app = Application.builder().token(self.token).build()
@@ -51,6 +65,8 @@ class SentinelBot:
         self._app.add_handler(CommandHandler("status", self._status_handler))
         self._app.add_handler(CommandHandler("coin", self._coin_handler))
         self._app.add_handler(CommandHandler("run", self._run_handler))
+        self._app.add_handler(CommandHandler("history", self._history_handler))
+        self._app.add_handler(CommandHandler("resume", self._resume_handler))
         return self._app
 
     async def push_proposal(self, chat_id: int, result) -> None:
@@ -64,6 +80,26 @@ class SentinelBot:
         """Push a pipeline result to all admin chats."""
         for chat_id in self.admin_chat_ids:
             await self.push_proposal(chat_id, result)
+
+    async def push_close_report(self, result: CloseResult) -> None:
+        """Push a trade close report to all admin chats."""
+        if self._app is None:
+            return
+        msg = format_trade_report(result)
+        for chat_id in self.admin_chat_ids:
+            await self._app.bot.send_message(chat_id=chat_id, text=msg)
+
+    async def push_risk_rejection(
+        self, *, symbol: str, side: str, entry_price: float, risk_result: RiskResult
+    ) -> None:
+        """Push a risk rejection notification to all admin chats."""
+        if self._app is None:
+            return
+        msg = format_risk_rejection(
+            symbol=symbol, side=side, entry_price=entry_price, risk_result=risk_result
+        )
+        for chat_id in self.admin_chat_ids:
+            await self._app.bot.send_message(chat_id=chat_id, text=msg)
 
     async def _check_admin(self, update: Update) -> bool:
         chat_id = update.effective_chat.id if update.effective_chat else 0
@@ -162,3 +198,25 @@ class SentinelBot:
         for result in results:
             self._latest_results[result.symbol] = result
             await update.message.reply_text(format_proposal(result))
+
+    async def _history_handler(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._check_admin(update):
+            return
+        if self._trade_repo is None:
+            await update.message.reply_text("Paper trading not configured.")
+            return
+        trades = self._trade_repo.get_recent_closed(limit=10)
+        await update.message.reply_text(format_history(trades))
+
+    async def _resume_handler(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._check_admin(update):
+            return
+        if self._paper_engine is None:
+            await update.message.reply_text("Paper trading not configured.")
+            return
+        self._paper_engine.set_paused(False)
+        await update.message.reply_text("Pipeline resumed. Trading un-paused.")

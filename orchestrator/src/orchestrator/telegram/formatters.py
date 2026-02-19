@@ -28,6 +28,7 @@ def format_help() -> str:
         "/run <symbol> - Trigger pipeline for specific symbol\n"
         "/run <symbol> sonnet|opus - Trigger with specific model\n"
         "/history - Recent trade records\n"
+        "/resume - Un-pause pipeline after risk pause\n"
         "/help - Show this message"
     )
 
@@ -116,4 +117,19 @@ def format_risk_rejection(
         f"Rule: {risk_result.rule_violated}",
         f"Reason: {risk_result.reason}",
     ]
+    return "\n".join(lines)
+
+
+def format_history(trades: list) -> str:
+    if not trades:
+        return "No closed trades yet."
+
+    lines = ["Recent closed trades:\n"]
+    for t in trades:
+        pnl_str = f"${t.pnl:,.2f}" if t.pnl >= 0 else f"-${abs(t.pnl):,.2f}"
+        lines.append(
+            f"  {t.symbol} {t.side.upper()} | "
+            f"{t.entry_price:,.1f} → {t.exit_price:,.1f} | "
+            f"PnL: {pnl_str}"
+        )
     return "\n".join(lines)
