@@ -32,3 +32,13 @@ def test_settings_parses_symbols():
     )
     assert len(settings.pipeline_symbols) == 2
     assert settings.pipeline_symbols[0] == "BTC/USDT:USDT"
+
+
+def test_settings_paper_trading_defaults(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test")
+    monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_IDS", "[123]")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    settings = Settings()
+    assert settings.paper_initial_equity == 10000.0
+    assert settings.paper_taker_fee_rate == 0.0005
+    assert settings.paper_maker_fee_rate == 0.0002
