@@ -15,6 +15,16 @@ from orchestrator.models import (
     VolatilityRegime,
 )
 from orchestrator.pipeline.runner import PipelineResult, PipelineRunner
+from orchestrator.risk.checker import RiskResult
+
+
+def _make_proposal(*, side=Side.LONG, risk_pct=1.0):
+    return TradeProposal(
+        symbol="BTC/USDT:USDT", side=side, entry=EntryOrder(type="market"),
+        position_size_risk_pct=risk_pct, stop_loss=93000.0,
+        take_profit=[97000.0], time_horizon="4h", confidence=0.7,
+        invalid_if=[], rationale="test",
+    )
 
 
 def make_snapshot() -> MarketSnapshot:
@@ -229,3 +239,110 @@ class TestPipelineRunner:
         for mock_agent in [mock_sentiment, mock_market, mock_proposer]:
             call_kwargs = mock_agent.analyze.call_args[1]
             assert call_kwargs["model_override"] == "anthropic/claude-opus-4-6"
+
+
+class TestPipelineRunnerWithRisk:
+    """Tests for M2 risk + paper engine integration."""
+
+    @pytest.mark.asyncio
+    async def test_approved_proposal_opens_position(self):
+        """When risk check passes, paper engine opens a position."""
+        data_fetcher = AsyncMock()
+        data_fetcher.fetch_snapshot.return_value = MagicMock(
+            symbol="BTC/USDT:USDT",
+            current_price=95000.0,
+        )
+
+        sentiment_agent = AsyncMock()
+        sentiment_agent.analyze.return_value = MagicMock(
+            output=MagicMock(), degraded=False, llm_calls=[],
+        )
+        market_agent = AsyncMock()
+        market_agent.analyze.return_value = MagicMock(
+            output=MagicMock(), degraded=False, llm_calls=[],
+        )
+        proposer_agent = AsyncMock()
+        proposer_agent.analyze.return_value = MagicMock(
+            output=_make_proposal(side=Side.LONG, risk_pct=1.0),
+            degraded=False, llm_calls=[],
+        )
+
+        risk_checker = MagicMock()
+        risk_checker.check.return_value = RiskResult(approved=True)
+
+        paper_engine = MagicMock()
+        paper_engine.check_sl_tp.return_value = []
+        paper_engine.open_positions_risk_pct = 0.0
+        paper_engine.paused = False
+        paper_engine.equity = 10000.0
+        paper_engine.open_position.return_value = MagicMock(trade_id="t-001")
+        paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
+        paper_engine._trade_repo.count_consecutive_losses.return_value = 0
+
+        runner = PipelineRunner(
+            data_fetcher=data_fetcher,
+            sentiment_agent=sentiment_agent,
+            market_agent=market_agent,
+            proposer_agent=proposer_agent,
+            pipeline_repo=MagicMock(),
+            llm_call_repo=MagicMock(),
+            proposal_repo=MagicMock(),
+            risk_checker=risk_checker,
+            paper_engine=paper_engine,
+        )
+
+        result = await runner.execute("BTC/USDT:USDT")
+        assert result.status == "completed"
+        paper_engine.open_position.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_risk_rejected_does_not_open_position(self):
+        data_fetcher = AsyncMock()
+        data_fetcher.fetch_snapshot.return_value = MagicMock(
+            symbol="BTC/USDT:USDT",
+            current_price=95000.0,
+        )
+
+        sentiment_agent = AsyncMock()
+        sentiment_agent.analyze.return_value = MagicMock(
+            output=MagicMock(), degraded=False, llm_calls=[],
+        )
+        market_agent = AsyncMock()
+        market_agent.analyze.return_value = MagicMock(
+            output=MagicMock(), degraded=False, llm_calls=[],
+        )
+        proposer_agent = AsyncMock()
+        proposer_agent.analyze.return_value = MagicMock(
+            output=_make_proposal(side=Side.LONG, risk_pct=3.0),
+            degraded=False, llm_calls=[],
+        )
+
+        risk_checker = MagicMock()
+        risk_checker.check.return_value = RiskResult(
+            approved=False, rule_violated="max_single_risk",
+            reason="too high", action="reject",
+        )
+
+        paper_engine = MagicMock()
+        paper_engine.check_sl_tp.return_value = []
+        paper_engine.open_positions_risk_pct = 0.0
+        paper_engine.paused = False
+        paper_engine.equity = 10000.0
+        paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
+        paper_engine._trade_repo.count_consecutive_losses.return_value = 0
+
+        runner = PipelineRunner(
+            data_fetcher=data_fetcher,
+            sentiment_agent=sentiment_agent,
+            market_agent=market_agent,
+            proposer_agent=proposer_agent,
+            pipeline_repo=MagicMock(),
+            llm_call_repo=MagicMock(),
+            proposal_repo=MagicMock(),
+            risk_checker=risk_checker,
+            paper_engine=paper_engine,
+        )
+
+        result = await runner.execute("BTC/USDT:USDT")
+        assert result.status == "risk_rejected"
+        paper_engine.open_position.assert_not_called()

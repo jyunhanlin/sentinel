@@ -2,19 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from typing import TYPE_CHECKING
 
 import structlog
 from pydantic import BaseModel
 
 from orchestrator.agents.base import AgentResult, BaseAgent
 from orchestrator.exchange.data_fetcher import DataFetcher
-from orchestrator.models import TradeProposal
+from orchestrator.exchange.paper_engine import CloseResult
+from orchestrator.models import Side, TradeProposal
 from orchestrator.pipeline.aggregator import aggregate_proposal
+from orchestrator.risk.checker import RiskResult
 from orchestrator.storage.repository import (
     LLMCallRepository,
     PipelineRepository,
     TradeProposalRepository,
 )
+
+if TYPE_CHECKING:
+    from orchestrator.exchange.paper_engine import PaperEngine
+    from orchestrator.risk.checker import RiskChecker
 
 logger = structlog.get_logger(__name__)
 
@@ -22,13 +29,15 @@ logger = structlog.get_logger(__name__)
 class PipelineResult(BaseModel, frozen=True):
     run_id: str
     symbol: str
-    status: str  # completed, rejected, failed
+    status: str  # completed, rejected, risk_rejected, risk_paused, failed
     model_used: str = ""
     proposal: TradeProposal | None = None
     rejection_reason: str = ""
     sentiment_degraded: bool = False
     market_degraded: bool = False
     proposer_degraded: bool = False
+    risk_result: RiskResult | None = None
+    close_results: list[CloseResult] = []
 
 
 class PipelineRunner:
@@ -42,6 +51,8 @@ class PipelineRunner:
         pipeline_repo: PipelineRepository,
         llm_call_repo: LLMCallRepository,
         proposal_repo: TradeProposalRepository,
+        risk_checker: RiskChecker | None = None,
+        paper_engine: PaperEngine | None = None,
     ) -> None:
         self._data_fetcher = data_fetcher
         self._sentiment_agent = sentiment_agent
@@ -50,6 +61,8 @@ class PipelineRunner:
         self._pipeline_repo = pipeline_repo
         self._llm_call_repo = llm_call_repo
         self._proposal_repo = proposal_repo
+        self._risk_checker = risk_checker
+        self._paper_engine = paper_engine
 
     async def execute(
         self, symbol: str, *, timeframe: str = "1h", model_override: str | None = None
@@ -61,11 +74,20 @@ class PipelineRunner:
         self._pipeline_repo.create_run(run_id=run_id, symbol=symbol)
 
         try:
-            # Fetch market data
+            # Step 1: Fetch market data
             snapshot = await self._data_fetcher.fetch_snapshot(symbol, timeframe=timeframe)
             log.info("snapshot_fetched", price=snapshot.current_price)
 
-            # Run LLM-1 and LLM-2 in parallel
+            # Step 2: Check SL/TP on existing positions
+            close_results: list[CloseResult] = []
+            if self._paper_engine is not None:
+                close_results = self._paper_engine.check_sl_tp(
+                    symbol=symbol, current_price=snapshot.current_price
+                )
+                for cr in close_results:
+                    log.info("position_closed_sltp", trade_id=cr.trade_id, reason=cr.reason)
+
+            # Step 3: Run LLM-1 and LLM-2 in parallel
             sentiment_result, market_result = await asyncio.gather(
                 self._sentiment_agent.analyze(snapshot=snapshot, model_override=model_override),
                 self._market_agent.analyze(snapshot=snapshot, model_override=model_override),
@@ -74,7 +96,7 @@ class PipelineRunner:
             self._save_llm_calls(run_id, "sentiment", sentiment_result)
             self._save_llm_calls(run_id, "market", market_result)
 
-            # Run LLM-3 (depends on LLM-1 + LLM-2)
+            # Step 4: Run LLM-3 (depends on LLM-1 + LLM-2)
             proposer_result = await self._proposer_agent.analyze(
                 snapshot=snapshot,
                 sentiment=sentiment_result.output,
@@ -83,34 +105,14 @@ class PipelineRunner:
             )
             self._save_llm_calls(run_id, "proposer", proposer_result)
 
-            # Validate proposal
+            # Step 5: Validate proposal
             aggregation = aggregate_proposal(
                 proposer_result.output, current_price=snapshot.current_price
             )
 
             model_used = model_override or ""
 
-            if aggregation.valid:
-                self._proposal_repo.save_proposal(
-                    proposal_id=aggregation.proposal.proposal_id,
-                    run_id=run_id,
-                    proposal_json=aggregation.proposal.model_dump_json(),
-                    risk_check_result="approved",
-                )
-                self._pipeline_repo.update_run_status(run_id, "completed")
-                log.info("pipeline_completed", side=aggregation.proposal.side)
-
-                return PipelineResult(
-                    run_id=run_id,
-                    symbol=symbol,
-                    status="completed",
-                    model_used=model_used,
-                    proposal=aggregation.proposal,
-                    sentiment_degraded=sentiment_result.degraded,
-                    market_degraded=market_result.degraded,
-                    proposer_degraded=proposer_result.degraded,
-                )
-            else:
+            if not aggregation.valid:
                 self._proposal_repo.save_proposal(
                     proposal_id=aggregation.proposal.proposal_id,
                     run_id=run_id,
@@ -131,7 +133,82 @@ class PipelineRunner:
                     sentiment_degraded=sentiment_result.degraded,
                     market_degraded=market_result.degraded,
                     proposer_degraded=proposer_result.degraded,
+                    close_results=close_results,
                 )
+
+            # Step 6: Risk check
+            risk_result: RiskResult | None = None
+            if self._risk_checker is not None and self._paper_engine is not None:
+                from datetime import UTC, datetime
+
+                paper_trade_repo = self._paper_engine._trade_repo
+                daily_pnl = paper_trade_repo.get_daily_pnl(datetime.now(UTC).date())
+                daily_loss_pct = abs(daily_pnl) / self._paper_engine.equity * 100 if daily_pnl < 0 else 0.0
+
+                risk_result = self._risk_checker.check(
+                    proposal=aggregation.proposal,
+                    open_positions_risk_pct=self._paper_engine.open_positions_risk_pct,
+                    consecutive_losses=paper_trade_repo.count_consecutive_losses(),
+                    daily_loss_pct=daily_loss_pct,
+                )
+
+                if not risk_result.approved:
+                    status = "risk_paused" if risk_result.action == "pause" else "risk_rejected"
+                    if risk_result.action == "pause":
+                        self._paper_engine.set_paused(True)
+
+                    self._proposal_repo.save_proposal(
+                        proposal_id=aggregation.proposal.proposal_id,
+                        run_id=run_id,
+                        proposal_json=aggregation.proposal.model_dump_json(),
+                        risk_check_result=status,
+                        risk_check_reason=risk_result.reason,
+                    )
+                    self._pipeline_repo.update_run_status(run_id, status)
+                    log.warning("pipeline_risk_blocked", status=status, rule=risk_result.rule_violated)
+
+                    return PipelineResult(
+                        run_id=run_id,
+                        symbol=symbol,
+                        status=status,
+                        model_used=model_used,
+                        proposal=aggregation.proposal,
+                        rejection_reason=risk_result.reason,
+                        sentiment_degraded=sentiment_result.degraded,
+                        market_degraded=market_result.degraded,
+                        proposer_degraded=proposer_result.degraded,
+                        risk_result=risk_result,
+                        close_results=close_results,
+                    )
+
+                # Step 7: Open position if approved and not FLAT
+                if aggregation.proposal.side != Side.FLAT:
+                    self._paper_engine.open_position(
+                        aggregation.proposal, current_price=snapshot.current_price
+                    )
+
+            # Step 8: Save approved proposal and return
+            self._proposal_repo.save_proposal(
+                proposal_id=aggregation.proposal.proposal_id,
+                run_id=run_id,
+                proposal_json=aggregation.proposal.model_dump_json(),
+                risk_check_result="approved",
+            )
+            self._pipeline_repo.update_run_status(run_id, "completed")
+            log.info("pipeline_completed", side=aggregation.proposal.side)
+
+            return PipelineResult(
+                run_id=run_id,
+                symbol=symbol,
+                status="completed",
+                model_used=model_used,
+                proposal=aggregation.proposal,
+                sentiment_degraded=sentiment_result.degraded,
+                market_degraded=market_result.degraded,
+                proposer_degraded=proposer_result.degraded,
+                risk_result=risk_result,
+                close_results=close_results,
+            )
 
         except Exception as e:
             log.error("pipeline_failed", error=str(e))
