@@ -1,0 +1,113 @@
+- id: bull_breakout
+  description: "Strong uptrend with breakout above resistance, normal funding rate"
+  snapshot:
+    symbol: "BTC/USDT:USDT"
+    current_price: 96500.0
+    timeframe: "4h"
+    volume_24h: 25000000000.0
+    funding_rate: 0.01
+    ohlcv:
+      - [1708300800000, 93000, 93800, 92500, 93500, 12000]
+      - [1708315200000, 93500, 94200, 93200, 94100, 13500]
+      - [1708329600000, 94100, 95000, 93800, 94800, 15000]
+      - [1708344000000, 94800, 95500, 94500, 95400, 16000]
+      - [1708358400000, 95400, 96800, 95200, 96500, 18000]
+  expected:
+    proposal:
+      side: ["long"]
+      confidence:
+        min: 0.5
+      has_stop_loss: true
+    sentiment:
+      sentiment_score:
+        min: 55
+        max: 100
+    market:
+      trend: ["up"]
+
+- id: bear_divergence
+  description: "Price rising but momentum weakening, elevated funding suggests overleveraged longs"
+  snapshot:
+    symbol: "BTC/USDT:USDT"
+    current_price: 97000.0
+    timeframe: "4h"
+    volume_24h: 18000000000.0
+    funding_rate: 0.035
+    ohlcv:
+      - [1708300800000, 94000, 96000, 93500, 95800, 20000]
+      - [1708315200000, 95800, 97200, 95500, 96500, 17000]
+      - [1708329600000, 96500, 97500, 96000, 96800, 14000]
+      - [1708344000000, 96800, 97800, 96200, 97200, 12000]
+      - [1708358400000, 97200, 97500, 96500, 97000, 10000]
+  expected:
+    proposal:
+      side: ["short", "flat"]
+    sentiment:
+      sentiment_score:
+        min: 30
+        max: 70
+
+- id: sideways_range
+  description: "Low volatility, price oscillating in tight range, no clear trend"
+  snapshot:
+    symbol: "BTC/USDT:USDT"
+    current_price: 95200.0
+    timeframe: "4h"
+    volume_24h: 12000000000.0
+    funding_rate: 0.005
+    ohlcv:
+      - [1708300800000, 95000, 95500, 94800, 95200, 8000]
+      - [1708315200000, 95200, 95400, 94900, 95100, 7500]
+      - [1708329600000, 95100, 95600, 95000, 95300, 7800]
+      - [1708344000000, 95300, 95500, 94900, 95100, 7200]
+      - [1708358400000, 95100, 95400, 94800, 95200, 7600]
+  expected:
+    proposal:
+      side: ["flat"]
+    market:
+      trend: ["range"]
+      volatility_regime: ["low", "medium"]
+
+- id: high_volatility
+  description: "Large candles with wide ranges, elevated funding, choppy price action"
+  snapshot:
+    symbol: "BTC/USDT:USDT"
+    current_price: 94000.0
+    timeframe: "4h"
+    volume_24h: 35000000000.0
+    funding_rate: 0.025
+    ohlcv:
+      - [1708300800000, 92000, 96000, 91000, 95500, 25000]
+      - [1708315200000, 95500, 96500, 90000, 91000, 30000]
+      - [1708329600000, 91000, 95000, 89000, 94500, 28000]
+      - [1708344000000, 94500, 97000, 92000, 93000, 32000]
+      - [1708358400000, 93000, 95500, 91500, 94000, 27000]
+  expected:
+    proposal:
+      side: ["flat", "long", "short"]
+      confidence:
+        max: 0.8
+    market:
+      volatility_regime: ["high"]
+
+- id: funding_anomaly
+  description: "Extreme funding rate suggesting overleveraged market, otherwise bullish structure"
+  snapshot:
+    symbol: "BTC/USDT:USDT"
+    current_price: 98000.0
+    timeframe: "4h"
+    volume_24h: 28000000000.0
+    funding_rate: 0.065
+    ohlcv:
+      - [1708300800000, 95000, 96000, 94800, 95800, 15000]
+      - [1708315200000, 95800, 96800, 95500, 96500, 16000]
+      - [1708329600000, 96500, 97500, 96200, 97300, 17000]
+      - [1708344000000, 97300, 98200, 97000, 98000, 18000]
+      - [1708358400000, 98000, 98500, 97500, 98000, 16500]
+  expected:
+    proposal:
+      side: ["flat", "long"]
+    sentiment:
+      sentiment_score:
+        min: 40
+        max: 85

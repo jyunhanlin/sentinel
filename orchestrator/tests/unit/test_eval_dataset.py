@@ -68,3 +68,20 @@ class TestEvalDataset:
         r = ExpectedRange(min=1.0, max=10.0)
         with pytest.raises(Exception):
             r.min = 5.0
+
+
+class TestGoldenDatasetV1:
+    def test_load_golden_v1(self):
+        """The golden_v1 dataset should load and have 5 cases."""
+        dataset_path = os.path.join(
+            os.path.dirname(__file__),
+            "../../src/orchestrator/eval/datasets/golden_v1.yaml",
+        )
+        dataset = load_dataset(dataset_path)
+        assert len(dataset) == 5
+        ids = {c.id for c in dataset}
+        assert "bull_breakout" in ids
+        assert "bear_divergence" in ids
+        assert "sideways_range" in ids
+        assert "high_volatility" in ids
+        assert "funding_anomaly" in ids
