@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from orchestrator.pipeline.runner import PipelineResult, PipelineRunner
+
+if TYPE_CHECKING:
+    from orchestrator.approval.manager import ApprovalManager
 
 logger = structlog.get_logger(__name__)
 
@@ -18,11 +23,13 @@ class PipelineScheduler:
         symbols: list[str],
         interval_minutes: int = 15,
         premium_model: str = "",
+        approval_manager: ApprovalManager | None = None,
     ) -> None:
         self.symbols = symbols
         self.interval_minutes = interval_minutes
         self.premium_model = premium_model
         self._runner = runner
+        self._approval_manager = approval_manager
         self._scheduler: AsyncIOScheduler | None = None
 
     async def run_once(
@@ -71,6 +78,16 @@ class PipelineScheduler:
                 replace_existing=True,
             )
 
+        # Approval expiry check
+        if self._approval_manager is not None:
+            self._scheduler.add_job(
+                self._expire_stale_approvals,
+                trigger=IntervalTrigger(minutes=1),
+                id="approval_expiry",
+                name="Approval Expiry Check",
+                replace_existing=True,
+            )
+
         self._scheduler.start()
         logger.info(
             "scheduler_started",
@@ -78,6 +95,14 @@ class PipelineScheduler:
             premium_model=self.premium_model or "(none)",
             symbols=self.symbols,
         )
+
+    async def _expire_stale_approvals(self) -> None:
+        """Expire stale pending approvals."""
+        if self._approval_manager is None:
+            return
+        expired = self._approval_manager.expire_stale()
+        if expired:
+            logger.info("approvals_expired", count=len(expired))
 
     def stop(self) -> None:
         if self._scheduler:

@@ -89,6 +89,34 @@ class TestPipelineScheduler:
         )
 
 
+class TestSchedulerExpiry:
+    @pytest.mark.asyncio
+    async def test_expire_stale_approvals(self):
+        runner = MagicMock()
+        approval_mgr = MagicMock()
+        approval_mgr.expire_stale.return_value = []
+
+        scheduler = PipelineScheduler(
+            runner=runner,
+            symbols=["BTC/USDT:USDT"],
+            interval_minutes=15,
+            approval_manager=approval_mgr,
+        )
+        await scheduler._expire_stale_approvals()
+        approval_mgr.expire_stale.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_expire_without_approval_manager(self):
+        runner = MagicMock()
+        scheduler = PipelineScheduler(
+            runner=runner,
+            symbols=["BTC/USDT:USDT"],
+            interval_minutes=15,
+        )
+        # Should not raise
+        await scheduler._expire_stale_approvals()
+
+
 class TestSchedulerLifecycle:
     def test_start_creates_and_starts_scheduler(self):
         runner = MagicMock()
