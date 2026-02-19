@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from orchestrator.models import Side, TradeProposal
 from orchestrator.risk.position_sizer import PositionSizer
+from orchestrator.stats.calculator import StatsCalculator
 
 if TYPE_CHECKING:
     from orchestrator.storage.repository import AccountSnapshotRepository, PaperTradeRepository
@@ -50,12 +51,14 @@ class PaperEngine:
         position_sizer: PositionSizer,
         trade_repo: PaperTradeRepository,
         snapshot_repo: AccountSnapshotRepository,
+        stats_calculator: StatsCalculator | None = None,
     ) -> None:
         self._initial_equity = initial_equity
         self._taker_fee_rate = taker_fee_rate
         self._position_sizer = position_sizer
         self._trade_repo = trade_repo
         self._snapshot_repo = snapshot_repo
+        self._stats_calculator = stats_calculator
         self._positions: list[Position] = []
         self._closed_pnl: float = 0.0
         self._total_fees: float = 0.0
@@ -217,6 +220,8 @@ class PaperEngine:
             fee=close_fee,
         )
 
+        self._save_stats_snapshot()
+
         return CloseResult(
             trade_id=pos.trade_id,
             symbol=pos.symbol,
@@ -228,3 +233,27 @@ class PaperEngine:
             fees=close_fee,
             reason=reason,
         )
+
+    def _save_stats_snapshot(self) -> None:
+        """Calculate performance stats and save snapshot."""
+        if self._stats_calculator is None:
+            return
+
+        closed_trades = self._trade_repo.get_all_closed()
+        stats = self._stats_calculator.calculate(
+            closed_trades=closed_trades, initial_equity=self._initial_equity
+        )
+        today = datetime.now(UTC).date()
+        daily_pnl = self._trade_repo.get_daily_pnl(today)
+        self._snapshot_repo.save_snapshot(
+            equity=self.equity,
+            open_count=len(self._positions),
+            daily_pnl=daily_pnl,
+            total_pnl=stats.total_pnl,
+            win_rate=stats.win_rate,
+            profit_factor=stats.profit_factor,
+            max_drawdown_pct=stats.max_drawdown_pct,
+            sharpe_ratio=stats.sharpe_ratio,
+            total_trades=stats.total_trades,
+        )
+        logger.info("stats_snapshot_saved", total_pnl=stats.total_pnl, win_rate=stats.win_rate)

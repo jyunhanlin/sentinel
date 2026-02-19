@@ -16,6 +16,7 @@ from orchestrator.pipeline.runner import PipelineRunner
 from orchestrator.pipeline.scheduler import PipelineScheduler
 from orchestrator.risk.checker import RiskChecker
 from orchestrator.risk.position_sizer import RiskPercentSizer
+from orchestrator.stats.calculator import StatsCalculator
 from orchestrator.storage.database import create_db_engine, init_db
 from orchestrator.storage.repository import (
     AccountSnapshotRepository,
@@ -90,6 +91,9 @@ def create_app_components(
         max_daily_loss_pct=max_daily_loss_pct,
     )
 
+    # Stats
+    stats_calculator = StatsCalculator()
+
     # Paper Engine
     paper_engine = PaperEngine(
         initial_equity=paper_initial_equity,
@@ -97,6 +101,7 @@ def create_app_components(
         position_sizer=RiskPercentSizer(),
         trade_repo=paper_trade_repo,
         snapshot_repo=account_snapshot_repo,
+        stats_calculator=stats_calculator,
     )
     paper_engine.rebuild_from_db()
 
@@ -140,6 +145,7 @@ def create_app_components(
         "runner": runner,
         "risk_checker": risk_checker,
         "paper_engine": paper_engine,
+        "stats_calculator": stats_calculator,
     }
 
 

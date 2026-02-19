@@ -5,6 +5,7 @@ import pytest
 from orchestrator.exchange.paper_engine import PaperEngine
 from orchestrator.models import EntryOrder, Side, TradeProposal
 from orchestrator.risk.position_sizer import RiskPercentSizer
+from orchestrator.stats.calculator import StatsCalculator
 
 
 def _make_proposal(
@@ -107,3 +108,47 @@ class TestPaperEngine:
         closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=95500.0)
         assert len(closed) == 0
         assert len(engine.get_open_positions()) == 1
+
+
+class TestPaperEngineStats:
+    def test_close_position_saves_stats_snapshot(self):
+        """When a position is closed, stats should be calculated and snapshot saved."""
+        trade_repo = MagicMock()
+        trade_repo.get_all_closed.return_value = []
+        snapshot_repo = MagicMock()
+        stats_calc = StatsCalculator()
+
+        engine = PaperEngine(
+            initial_equity=10000.0,
+            taker_fee_rate=0.0005,
+            position_sizer=RiskPercentSizer(),
+            trade_repo=trade_repo,
+            snapshot_repo=snapshot_repo,
+            stats_calculator=stats_calc,
+        )
+
+        # Open and close a position
+        proposal = TradeProposal(
+            symbol="BTC/USDT:USDT", side=Side.LONG, entry=EntryOrder(type="market"),
+            position_size_risk_pct=1.0, stop_loss=93000.0, take_profit=[97000.0],
+            time_horizon="4h", confidence=0.7, invalid_if=[], rationale="test",
+        )
+        engine.open_position(proposal, current_price=95000.0)
+
+        # Mock the closed trades for stats calculation
+        closed_trade_mock = MagicMock()
+        closed_trade_mock.pnl = -150.0
+        closed_trade_mock.closed_at = MagicMock()
+        closed_trade_mock.closed_at.date.return_value = "2026-02-19"
+        trade_repo.get_all_closed.return_value = [closed_trade_mock]
+
+        # Trigger SL
+        results = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=92000.0)
+        assert len(results) == 1
+
+        # Verify snapshot was saved with stats
+        snapshot_repo.save_snapshot.assert_called()
+        call_kwargs = snapshot_repo.save_snapshot.call_args[1]
+        assert "total_pnl" in call_kwargs
+        assert "win_rate" in call_kwargs
+        assert "total_trades" in call_kwargs
