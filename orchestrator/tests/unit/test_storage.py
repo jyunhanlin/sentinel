@@ -244,6 +244,95 @@ class TestAccountSnapshotStatsFields:
         assert snapshot.total_trades == 16
 
 
+class TestApprovalRecord:
+    def test_create_approval_record(self, session):
+        from datetime import UTC, datetime, timedelta
+
+        from orchestrator.storage.models import ApprovalRecord
+
+        now = datetime.now(UTC)
+        record = ApprovalRecord(
+            approval_id="a-001",
+            proposal_id="p-001",
+            run_id="run-001",
+            snapshot_price=95200.0,
+            status="pending",
+            created_at=now,
+            expires_at=now + timedelta(minutes=15),
+        )
+        assert record.approval_id == "a-001"
+        assert record.status == "pending"
+        assert record.message_id is None
+
+
+class TestApprovalRepository:
+    def test_save_and_get_approval(self, session):
+        from datetime import UTC, datetime, timedelta
+
+        from orchestrator.storage.repository import ApprovalRepository
+
+        repo = ApprovalRepository(session)
+        now = datetime.now(UTC)
+        record = repo.save_approval(
+            approval_id="a-001",
+            proposal_id="p-001",
+            run_id="run-001",
+            snapshot_price=95200.0,
+            expires_at=now + timedelta(minutes=15),
+        )
+        assert record.approval_id == "a-001"
+        assert record.status == "pending"
+
+        fetched = repo.get_by_id("a-001")
+        assert fetched is not None
+        assert fetched.proposal_id == "p-001"
+
+    def test_update_status(self, session):
+        from datetime import UTC, datetime, timedelta
+
+        from orchestrator.storage.repository import ApprovalRepository
+
+        repo = ApprovalRepository(session)
+        now = datetime.now(UTC)
+        repo.save_approval(
+            approval_id="a-002",
+            proposal_id="p-002",
+            run_id="run-002",
+            snapshot_price=95000.0,
+            expires_at=now + timedelta(minutes=15),
+        )
+        updated = repo.update_status("a-002", status="approved")
+        assert updated.status == "approved"
+        assert updated.resolved_at is not None
+
+    def test_get_pending(self, session):
+        from datetime import UTC, datetime, timedelta
+
+        from orchestrator.storage.repository import ApprovalRepository
+
+        repo = ApprovalRepository(session)
+        now = datetime.now(UTC)
+        repo.save_approval(
+            approval_id="a-p1",
+            proposal_id="p-1",
+            run_id="r-1",
+            snapshot_price=95000.0,
+            expires_at=now + timedelta(minutes=15),
+        )
+        repo.save_approval(
+            approval_id="a-p2",
+            proposal_id="p-2",
+            run_id="r-2",
+            snapshot_price=95000.0,
+            expires_at=now + timedelta(minutes=15),
+        )
+        repo.update_status("a-p2", status="approved")
+
+        pending = repo.get_pending()
+        assert len(pending) == 1
+        assert pending[0].approval_id == "a-p1"
+
+
 class TestTradeProposalRepository:
     def test_save_and_get_proposal(self, session):
         repo = TradeProposalRepository(session)

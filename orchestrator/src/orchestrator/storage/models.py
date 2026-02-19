@@ -58,8 +58,27 @@ class PaperTradeRecord(SQLModel, table=True):
     fees: float = 0.0
     risk_pct: float = 0.0
     status: str = "open"  # open, closed
+    mode: str = "paper"              # "paper" | "live"
+    exchange_order_id: str = ""
+    sl_order_id: str = ""
+    tp_order_id: str = ""
     opened_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     closed_at: datetime | None = None
+
+
+class ApprovalRecord(SQLModel, table=True):
+    __tablename__ = "approval_records"
+
+    id: int | None = Field(default=None, primary_key=True)
+    approval_id: str = Field(unique=True, index=True)
+    proposal_id: str = Field(index=True)
+    run_id: str
+    snapshot_price: float
+    status: str = "pending"  # pending, approved, rejected, expired
+    message_id: int | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    resolved_at: datetime | None = None
 
 
 class AccountSnapshotRecord(SQLModel, table=True):
