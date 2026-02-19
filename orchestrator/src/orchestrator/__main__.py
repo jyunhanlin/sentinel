@@ -14,8 +14,13 @@ from orchestrator.logging import setup_logging
 from orchestrator.pipeline.runner import PipelineRunner
 from orchestrator.pipeline.scheduler import PipelineScheduler
 from orchestrator.storage.database import create_db_engine, init_db
+from orchestrator.exchange.paper_engine import PaperEngine
+from orchestrator.risk.checker import RiskChecker
+from orchestrator.risk.position_sizer import RiskPercentSizer
 from orchestrator.storage.repository import (
+    AccountSnapshotRepository,
     LLMCallRepository,
+    PaperTradeRepository,
     PipelineRepository,
     TradeProposalRepository,
 )
@@ -38,6 +43,15 @@ def create_app_components(
     llm_max_retries: int = 1,
     pipeline_symbols: list[str] | None = None,
     pipeline_interval_minutes: int = 15,
+    # Risk
+    max_single_risk_pct: float = 2.0,
+    max_total_exposure_pct: float = 20.0,
+    max_daily_loss_pct: float = 5.0,
+    max_consecutive_losses: int = 5,
+    # Paper Trading
+    paper_initial_equity: float = 10000.0,
+    paper_taker_fee_rate: float = 0.0005,
+    paper_maker_fee_rate: float = 0.0002,
 ) -> dict:
     # Database
     db_engine = create_db_engine(database_url)
@@ -65,6 +79,26 @@ def create_app_components(
     pipeline_repo = PipelineRepository(session)
     llm_call_repo = LLMCallRepository(session)
     proposal_repo = TradeProposalRepository(session)
+    paper_trade_repo = PaperTradeRepository(session)
+    account_snapshot_repo = AccountSnapshotRepository(session)
+
+    # Risk
+    risk_checker = RiskChecker(
+        max_single_risk_pct=max_single_risk_pct,
+        max_total_exposure_pct=max_total_exposure_pct,
+        max_consecutive_losses=max_consecutive_losses,
+        max_daily_loss_pct=max_daily_loss_pct,
+    )
+
+    # Paper Engine
+    paper_engine = PaperEngine(
+        initial_equity=paper_initial_equity,
+        taker_fee_rate=paper_taker_fee_rate,
+        position_sizer=RiskPercentSizer(),
+        trade_repo=paper_trade_repo,
+        snapshot_repo=account_snapshot_repo,
+    )
+    paper_engine.rebuild_from_db()
 
     # Pipeline
     runner = PipelineRunner(
@@ -75,6 +109,8 @@ def create_app_components(
         pipeline_repo=pipeline_repo,
         llm_call_repo=llm_call_repo,
         proposal_repo=proposal_repo,
+        risk_checker=risk_checker,
+        paper_engine=paper_engine,
     )
 
     symbols = pipeline_symbols or ["BTC/USDT:USDT", "ETH/USDT:USDT"]
@@ -92,6 +128,8 @@ def create_app_components(
         premium_model=llm_model_premium,
     )
     bot.set_scheduler(scheduler)
+    bot.set_paper_engine(paper_engine)
+    bot.set_trade_repo(paper_trade_repo)
 
     return {
         "bot": bot,
@@ -99,6 +137,8 @@ def create_app_components(
         "db_engine": db_engine,
         "scheduler": scheduler,
         "runner": runner,
+        "risk_checker": risk_checker,
+        "paper_engine": paper_engine,
     }
 
 
@@ -121,6 +161,13 @@ def main() -> None:
         llm_max_retries=settings.llm_max_retries,
         pipeline_symbols=settings.pipeline_symbols,
         pipeline_interval_minutes=settings.pipeline_interval_minutes,
+        max_single_risk_pct=settings.max_single_risk_pct,
+        max_total_exposure_pct=settings.max_total_exposure_pct,
+        max_daily_loss_pct=settings.max_daily_loss_pct,
+        max_consecutive_losses=settings.max_consecutive_losses,
+        paper_initial_equity=settings.paper_initial_equity,
+        paper_taker_fee_rate=settings.paper_taker_fee_rate,
+        paper_maker_fee_rate=settings.paper_maker_fee_rate,
     )
 
     # Start scheduler

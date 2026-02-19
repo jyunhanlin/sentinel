@@ -22,3 +22,16 @@ def test_create_app_components():
     assert "db_engine" in components
     assert "scheduler" in components
     assert "runner" in components
+
+
+def test_create_app_components_includes_m2():
+    """Verify M2 components (risk_checker, paper_engine) are in output."""
+    components = create_app_components(
+        telegram_bot_token="test-token",
+        telegram_admin_chat_ids=[123],
+        exchange_id="binance",
+        database_url="sqlite:///:memory:",
+        anthropic_api_key="test-key",
+    )
+    assert "paper_engine" in components
+    assert "risk_checker" in components
