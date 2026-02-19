@@ -1,10 +1,14 @@
+from orchestrator.exchange.paper_engine import CloseResult
 from orchestrator.models import EntryOrder, Side, TradeProposal
 from orchestrator.pipeline.runner import PipelineResult
+from orchestrator.risk.checker import RiskResult
 from orchestrator.telegram.bot import SentinelBot, is_admin
 from orchestrator.telegram.formatters import (
     format_help,
     format_proposal,
+    format_risk_rejection,
     format_status,
+    format_trade_report,
     format_welcome,
 )
 
@@ -136,3 +140,76 @@ class TestFormatStatus:
     def test_format_status_empty(self):
         msg = format_status([])
         assert "No" in msg or "no" in msg
+
+
+class TestFormatTradeReport:
+    def test_format_long_close_sl(self):
+        result = CloseResult(
+            trade_id="t-001",
+            symbol="BTC/USDT:USDT",
+            side=Side.LONG,
+            entry_price=95000.0,
+            exit_price=93000.0,
+            quantity=0.075,
+            pnl=-150.0,
+            fees=7.13,
+            reason="sl",
+        )
+        text = format_trade_report(result)
+        assert "[CLOSED]" in text
+        assert "BTC/USDT:USDT" in text
+        assert "LONG" in text
+        assert "93,000.0" in text
+        assert "-$150.00" in text
+        assert "SL" in text
+
+    def test_format_short_close_tp(self):
+        result = CloseResult(
+            trade_id="t-002",
+            symbol="ETH/USDT:USDT",
+            side=Side.SHORT,
+            entry_price=3000.0,
+            exit_price=2800.0,
+            quantity=1.0,
+            pnl=200.0,
+            fees=2.90,
+            reason="tp",
+        )
+        text = format_trade_report(result)
+        assert "SHORT" in text
+        assert "TP" in text
+        assert "$200.00" in text
+
+
+class TestFormatRiskRejection:
+    def test_format_rejection(self):
+        risk_result = RiskResult(
+            approved=False,
+            rule_violated="max_total_exposure",
+            reason="Total exposure 22% exceeds 20% limit",
+            action="reject",
+        )
+        text = format_risk_rejection(
+            symbol="BTC/USDT:USDT",
+            side="LONG",
+            entry_price=95000.0,
+            risk_result=risk_result,
+        )
+        assert "[RISK REJECTED]" in text
+        assert "BTC/USDT:USDT" in text
+        assert "max_total_exposure" in text
+
+    def test_format_pause(self):
+        risk_result = RiskResult(
+            approved=False,
+            rule_violated="max_consecutive_losses",
+            reason="5 consecutive losses reached 5 limit",
+            action="pause",
+        )
+        text = format_risk_rejection(
+            symbol="BTC/USDT:USDT",
+            side="LONG",
+            entry_price=95000.0,
+            risk_result=risk_result,
+        )
+        assert "[RISK PAUSED]" in text

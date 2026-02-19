@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from orchestrator.exchange.paper_engine import CloseResult
+from orchestrator.risk.checker import RiskResult
+
 if TYPE_CHECKING:
     from orchestrator.pipeline.runner import PipelineResult
 
@@ -86,4 +89,31 @@ def format_status(results: list[PipelineResult]) -> str:
         conf = f"{r.proposal.confidence:.0%}" if r.proposal else "N/A"
         lines.append(f"  {r.symbol}: {side} (confidence: {conf}) [{r.status}]")
 
+    return "\n".join(lines)
+
+
+def format_trade_report(result: CloseResult) -> str:
+    reason_label = {"sl": "SL", "tp": "TP"}.get(result.reason, result.reason.upper())
+    pnl_str = f"${result.pnl:,.2f}" if result.pnl >= 0 else f"-${abs(result.pnl):,.2f}"
+
+    lines = [
+        f"[CLOSED] {result.symbol}",
+        f"Side: {result.side.value.upper()}",
+        f"Entry: {result.entry_price:,.1f} → Exit: {result.exit_price:,.1f} ({reason_label})",
+        f"Quantity: {result.quantity:.4f}",
+        f"PnL: {pnl_str} (fees: ${result.fees:,.2f})",
+    ]
+    return "\n".join(lines)
+
+
+def format_risk_rejection(
+    *, symbol: str, side: str, entry_price: float, risk_result: RiskResult
+) -> str:
+    label = "RISK PAUSED" if risk_result.action == "pause" else "RISK REJECTED"
+    lines = [
+        f"[{label}] {symbol}",
+        f"Proposed: {side} @ {entry_price:,.1f}",
+        f"Rule: {risk_result.rule_violated}",
+        f"Reason: {risk_result.reason}",
+    ]
     return "\n".join(lines)
