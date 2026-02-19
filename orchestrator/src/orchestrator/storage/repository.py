@@ -179,6 +179,14 @@ class PaperTradeRepository:
         self._session.refresh(trade)
         return trade
 
+    def get_all_closed(self) -> list[PaperTradeRecord]:
+        statement = (
+            select(PaperTradeRecord)
+            .where(PaperTradeRecord.status == "closed")
+            .order_by(PaperTradeRecord.closed_at.asc())
+        )
+        return list(self._session.exec(statement).all())
+
     def get_recent_closed(self, *, limit: int = 10) -> list[PaperTradeRecord]:
         statement = (
             select(PaperTradeRecord)

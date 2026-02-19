@@ -186,6 +186,30 @@ class TestPaperTradeRepository:
         assert recent[0].trade_id == "t-r1"
 
 
+class TestPaperTradeRepositoryAllClosed:
+    def test_get_all_closed_returns_all(self, session):
+        repo = PaperTradeRepository(session)
+        # Create 3 closed trades
+        for i in range(3):
+            repo.save_trade(
+                trade_id=f"t-{i}", proposal_id=f"p-{i}",
+                symbol="BTC/USDT:USDT", side="long",
+                entry_price=95000.0, quantity=0.01,
+            )
+            repo.update_trade_closed(
+                f"t-{i}", exit_price=96000.0, pnl=10.0, fees=1.0
+            )
+        # Create 1 open trade
+        repo.save_trade(
+            trade_id="t-open", proposal_id="p-open",
+            symbol="BTC/USDT:USDT", side="long",
+            entry_price=95000.0, quantity=0.01,
+        )
+        result = repo.get_all_closed()
+        assert len(result) == 3
+        assert all(t.status == "closed" for t in result)
+
+
 class TestAccountSnapshotRepository:
     def test_save_and_get_latest(self, session):
         repo = AccountSnapshotRepository(session)
