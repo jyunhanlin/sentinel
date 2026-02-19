@@ -34,6 +34,11 @@ class DataFetcher:
             ohlcv=ohlcv,
         )
 
+    async def fetch_current_price(self, symbol: str) -> float:
+        """Fetch the latest price for a symbol."""
+        ticker = await self._client.fetch_ticker(symbol)
+        return ticker.get("last", 0.0)
+
     async def _parallel_fetch(
         self, symbol: str, timeframe: str, limit: int
     ) -> tuple[list[list], float, dict]:

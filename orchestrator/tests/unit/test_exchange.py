@@ -50,6 +50,16 @@ class TestDataFetcher:
         assert len(snapshot.ohlcv) == 1
 
 
+class TestDataFetcherCurrentPrice:
+    @pytest.mark.asyncio
+    async def test_fetch_current_price(self):
+        mock_client = AsyncMock()
+        mock_client.fetch_ticker.return_value = {"last": 95300.0}
+        fetcher = DataFetcher(mock_client)
+        price = await fetcher.fetch_current_price("BTC/USDT:USDT")
+        assert price == 95300.0
+
+
 class TestMarketSnapshot:
     def test_snapshot_is_immutable(self):
         snapshot = MarketSnapshot(
