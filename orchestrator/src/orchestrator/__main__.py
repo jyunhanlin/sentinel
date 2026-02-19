@@ -136,6 +136,7 @@ def create_app_components(
     bot.set_paper_engine(paper_engine)
     bot.set_trade_repo(paper_trade_repo)
     bot.set_proposal_repo(proposal_repo)
+    bot.set_snapshot_repo(account_snapshot_repo)
 
     return {
         "bot": bot,

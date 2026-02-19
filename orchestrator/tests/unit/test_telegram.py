@@ -1,4 +1,7 @@
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from orchestrator.exchange.paper_engine import CloseResult
 from orchestrator.models import EntryOrder, Side, TradeProposal
@@ -336,3 +339,49 @@ class TestBotStatusFromDB:
         text = format_status_from_records([record])
         assert "BTC/USDT:USDT" in text
         assert "approved" in text.lower()
+
+
+class TestPerfHandler:
+    @pytest.mark.asyncio
+    async def test_perf_handler_returns_stats(self):
+        """The /perf command should show performance stats."""
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
+        mock_snapshot = MagicMock()
+        mock_snapshot.total_pnl = 500.0
+        mock_snapshot.win_rate = 0.6
+        mock_snapshot.profit_factor = 1.5
+        mock_snapshot.max_drawdown_pct = 3.0
+        mock_snapshot.sharpe_ratio = 1.1
+        mock_snapshot.total_trades = 10
+        mock_snapshot.equity = 10500.0
+
+        mock_snapshot_repo = MagicMock()
+        mock_snapshot_repo.get_latest.return_value = mock_snapshot
+        bot.set_snapshot_repo(mock_snapshot_repo)
+
+        update = MagicMock()
+        update.effective_chat.id = 123
+        update.message.reply_text = AsyncMock()
+        context = MagicMock()
+
+        await bot._perf_handler(update, context)
+        update.message.reply_text.assert_called_once()
+        text = update.message.reply_text.call_args[0][0]
+        assert "Win Rate" in text or "win" in text.lower()
+
+    @pytest.mark.asyncio
+    async def test_perf_handler_no_data(self):
+        """The /perf command should say no data when no snapshots exist."""
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
+        mock_snapshot_repo = MagicMock()
+        mock_snapshot_repo.get_latest.return_value = None
+        bot.set_snapshot_repo(mock_snapshot_repo)
+
+        update = MagicMock()
+        update.effective_chat.id = 123
+        update.message.reply_text = AsyncMock()
+        context = MagicMock()
+
+        await bot._perf_handler(update, context)
+        text = update.message.reply_text.call_args[0][0]
+        assert "No" in text or "no" in text

@@ -13,6 +13,7 @@ from telegram.ext import (
 from orchestrator.telegram.formatters import (
     format_help,
     format_history,
+    format_perf_report,
     format_proposal,
     format_risk_rejection,
     format_status,
@@ -25,7 +26,11 @@ if TYPE_CHECKING:
     from orchestrator.exchange.paper_engine import CloseResult, PaperEngine
     from orchestrator.pipeline.scheduler import PipelineScheduler
     from orchestrator.risk.checker import RiskResult
-    from orchestrator.storage.repository import PaperTradeRepository, TradeProposalRepository
+    from orchestrator.storage.repository import (
+        AccountSnapshotRepository,
+        PaperTradeRepository,
+        TradeProposalRepository,
+    )
 
 logger = structlog.get_logger(__name__)
 
@@ -50,6 +55,7 @@ class SentinelBot:
         self._paper_engine: PaperEngine | None = None
         self._trade_repo: PaperTradeRepository | None = None
         self._proposal_repo: TradeProposalRepository | None = None
+        self._snapshot_repo: AccountSnapshotRepository | None = None
 
     def set_scheduler(self, scheduler: PipelineScheduler) -> None:
         self._scheduler = scheduler
@@ -63,6 +69,9 @@ class SentinelBot:
     def set_proposal_repo(self, repo: TradeProposalRepository) -> None:
         self._proposal_repo = repo
 
+    def set_snapshot_repo(self, repo: AccountSnapshotRepository) -> None:
+        self._snapshot_repo = repo
+
     def build(self) -> Application:
         self._app = Application.builder().token(self.token).build()
         self._app.add_handler(CommandHandler("start", self._start_handler))
@@ -72,6 +81,7 @@ class SentinelBot:
         self._app.add_handler(CommandHandler("run", self._run_handler))
         self._app.add_handler(CommandHandler("history", self._history_handler))
         self._app.add_handler(CommandHandler("resume", self._resume_handler))
+        self._app.add_handler(CommandHandler("perf", self._perf_handler))
         return self._app
 
     async def push_proposal(self, chat_id: int, result) -> None:
@@ -248,3 +258,34 @@ class SentinelBot:
             return
         self._paper_engine.set_paused(False)
         await update.message.reply_text("Pipeline resumed. Trading un-paused.")
+
+    async def _perf_handler(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._check_admin(update):
+            return
+        if self._snapshot_repo is None:
+            await update.message.reply_text("Stats not configured.")
+            return
+        snapshot = self._snapshot_repo.get_latest()
+        if snapshot is None or snapshot.total_trades == 0:
+            await update.message.reply_text(
+                "No performance data yet. Close some positions first."
+            )
+            return
+        from orchestrator.stats.calculator import PerformanceStats
+
+        stats = PerformanceStats(
+            total_pnl=snapshot.total_pnl,
+            total_pnl_pct=(
+                (snapshot.total_pnl / snapshot.equity * 100) if snapshot.equity > 0 else 0.0
+            ),
+            win_rate=snapshot.win_rate,
+            total_trades=snapshot.total_trades,
+            winning_trades=int(snapshot.win_rate * snapshot.total_trades),
+            losing_trades=snapshot.total_trades - int(snapshot.win_rate * snapshot.total_trades),
+            profit_factor=snapshot.profit_factor,
+            max_drawdown_pct=snapshot.max_drawdown_pct,
+            sharpe_ratio=snapshot.sharpe_ratio,
+        )
+        await update.message.reply_text(format_perf_report(stats))
