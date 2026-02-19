@@ -39,3 +39,8 @@ class Settings(BaseSettings):
     paper_initial_equity: float = 10000.0
     paper_taker_fee_rate: float = 0.0005   # 0.05%
     paper_maker_fee_rate: float = 0.0002   # 0.02%
+
+    # Semi-auto Trading
+    trading_mode: str = "paper"                    # "paper" | "live"
+    approval_timeout_minutes: int = 15
+    price_deviation_threshold: float = 0.01        # 1%

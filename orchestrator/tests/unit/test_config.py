@@ -34,6 +34,18 @@ def test_settings_parses_symbols():
     assert settings.pipeline_symbols[0] == "BTC/USDT:USDT"
 
 
+def test_settings_semi_auto_defaults():
+    """Settings should have semi-auto trading config fields."""
+    settings = Settings(
+        telegram_bot_token="test",
+        telegram_admin_chat_ids=[123],
+        anthropic_api_key="test-key",
+    )
+    assert settings.trading_mode == "paper"
+    assert settings.approval_timeout_minutes == 15
+    assert settings.price_deviation_threshold == 0.01
+
+
 def test_settings_paper_trading_defaults(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test")
     monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_IDS", "[123]")
