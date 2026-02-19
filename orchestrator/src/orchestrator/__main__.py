@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import argparse
+import asyncio
+
 import structlog
 from sqlmodel import Session
 
@@ -28,6 +31,14 @@ from orchestrator.storage.repository import (
 from orchestrator.telegram.bot import SentinelBot
 
 logger = structlog.get_logger(__name__)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="orchestrator", description="Sentinel Orchestrator")
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser("eval", help="Run LLM evaluation against golden dataset")
+    subparsers.add_parser("perf", help="Print performance report")
+    return parser.parse_args(argv)
 
 
 def create_app_components(
@@ -150,13 +161,8 @@ def create_app_components(
     }
 
 
-def main() -> None:
-    setup_logging(json_output=True)
-
-    settings = Settings()  # type: ignore[call-arg]
-    logger.info("starting_sentinel", exchange=settings.exchange_id)
-
-    components = create_app_components(
+def _build_components(settings: Settings) -> dict:
+    return create_app_components(
         telegram_bot_token=settings.telegram_bot_token,
         telegram_admin_chat_ids=settings.telegram_admin_chat_ids,
         exchange_id=settings.exchange_id,
@@ -178,10 +184,72 @@ def main() -> None:
         paper_maker_fee_rate=settings.paper_maker_fee_rate,
     )
 
-    # Start scheduler
-    components["scheduler"].start()
 
-    # Start bot (blocking)
+async def _run_eval(components: dict) -> None:
+    from orchestrator.eval.runner import EvalRunner
+
+    eval_runner: EvalRunner = components["eval_runner"]
+    report = await eval_runner.run_default()
+    print(f"Dataset: {report.dataset_name}")
+    print(
+        f"Cases: {report.total_cases} | Passed: {report.passed_cases}"
+        f" | Failed: {report.failed_cases}"
+    )
+    print(f"Accuracy: {report.accuracy:.0%}")
+    for cr in report.case_results:
+        status = "PASS" if cr.passed else "FAIL"
+        print(f"  [{status}] {cr.case_id}")
+        for s in cr.scores:
+            if not s.passed:
+                print(f"    {s.field}: {s.reason}")
+
+
+def _run_perf(components: dict) -> None:
+    from orchestrator.telegram.formatters import format_perf_report
+
+    snapshot_repo = components.get("snapshot_repo")
+    if snapshot_repo is None:
+        print("Snapshot repo not available.")
+        return
+    snapshot = snapshot_repo.get_latest()
+    if snapshot is None or snapshot.total_trades == 0:
+        print("No performance data yet.")
+        return
+    from orchestrator.stats.calculator import PerformanceStats
+
+    stats = PerformanceStats(
+        total_pnl=snapshot.total_pnl,
+        total_pnl_pct=(snapshot.total_pnl / snapshot.equity * 100) if snapshot.equity > 0 else 0.0,
+        win_rate=snapshot.win_rate,
+        total_trades=snapshot.total_trades,
+        winning_trades=int(snapshot.win_rate * snapshot.total_trades),
+        losing_trades=snapshot.total_trades - int(snapshot.win_rate * snapshot.total_trades),
+        profit_factor=snapshot.profit_factor,
+        max_drawdown_pct=snapshot.max_drawdown_pct,
+        sharpe_ratio=snapshot.sharpe_ratio,
+    )
+    print(format_perf_report(stats))
+
+
+def main() -> None:
+    setup_logging(json_output=True)
+    args = parse_args()
+
+    settings = Settings()  # type: ignore[call-arg]
+    logger.info("starting_sentinel", exchange=settings.exchange_id)
+
+    components = _build_components(settings)
+
+    if args.command == "eval":
+        asyncio.run(_run_eval(components))
+        return
+
+    if args.command == "perf":
+        _run_perf(components)
+        return
+
+    # Default: run bot + scheduler
+    components["scheduler"].start()
     app = components["bot"].build()
     logger.info("bot_ready", admin_ids=settings.telegram_admin_chat_ids)
     app.run_polling()

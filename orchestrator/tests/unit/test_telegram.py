@@ -341,6 +341,21 @@ class TestBotStatusFromDB:
         assert "approved" in text.lower()
 
 
+class TestEvalHandler:
+    @pytest.mark.asyncio
+    async def test_eval_handler_no_runner(self):
+        """Without eval runner, /eval should say not configured."""
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
+        update = MagicMock()
+        update.effective_chat.id = 123
+        update.message.reply_text = AsyncMock()
+        context = MagicMock()
+
+        await bot._eval_handler(update, context)
+        text = update.message.reply_text.call_args[0][0]
+        assert "not configured" in text.lower() or "not available" in text.lower()
+
+
 class TestPerfHandler:
     @pytest.mark.asyncio
     async def test_perf_handler_returns_stats(self):

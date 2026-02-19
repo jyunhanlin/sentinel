@@ -11,6 +11,7 @@ from telegram.ext import (
 )
 
 from orchestrator.telegram.formatters import (
+    format_eval_report,
     format_help,
     format_history,
     format_perf_report,
@@ -23,6 +24,7 @@ from orchestrator.telegram.formatters import (
 )
 
 if TYPE_CHECKING:
+    from orchestrator.eval.runner import EvalRunner
     from orchestrator.exchange.paper_engine import CloseResult, PaperEngine
     from orchestrator.pipeline.scheduler import PipelineScheduler
     from orchestrator.risk.checker import RiskResult
@@ -56,6 +58,7 @@ class SentinelBot:
         self._trade_repo: PaperTradeRepository | None = None
         self._proposal_repo: TradeProposalRepository | None = None
         self._snapshot_repo: AccountSnapshotRepository | None = None
+        self._eval_runner: EvalRunner | None = None
 
     def set_scheduler(self, scheduler: PipelineScheduler) -> None:
         self._scheduler = scheduler
@@ -72,6 +75,9 @@ class SentinelBot:
     def set_snapshot_repo(self, repo: AccountSnapshotRepository) -> None:
         self._snapshot_repo = repo
 
+    def set_eval_runner(self, runner: EvalRunner) -> None:
+        self._eval_runner = runner
+
     def build(self) -> Application:
         self._app = Application.builder().token(self.token).build()
         self._app.add_handler(CommandHandler("start", self._start_handler))
@@ -82,6 +88,7 @@ class SentinelBot:
         self._app.add_handler(CommandHandler("history", self._history_handler))
         self._app.add_handler(CommandHandler("resume", self._resume_handler))
         self._app.add_handler(CommandHandler("perf", self._perf_handler))
+        self._app.add_handler(CommandHandler("eval", self._eval_handler))
         return self._app
 
     async def push_proposal(self, chat_id: int, result) -> None:
@@ -289,3 +296,24 @@ class SentinelBot:
             sharpe_ratio=snapshot.sharpe_ratio,
         )
         await update.message.reply_text(format_perf_report(stats))
+
+    async def _eval_handler(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._check_admin(update):
+            return
+        if self._eval_runner is None:
+            await update.message.reply_text("Eval not configured.")
+            return
+        await update.message.reply_text("Running evaluation...")
+        report = await self._eval_runner.run_default()
+        report_dict = report.model_dump()
+        # Add failure details for the formatter
+        report_dict["failures"] = [
+            {"case_id": cr["case_id"], "reason": "; ".join(
+                s["reason"] for s in cr["scores"] if not s["passed"]
+            )}
+            for cr in report_dict["case_results"]
+            if not cr["passed"]
+        ]
+        await update.message.reply_text(format_eval_report(report_dict))

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 import structlog
 from pydantic import BaseModel
 
-from orchestrator.eval.dataset import EvalCase
+from orchestrator.eval.dataset import EvalCase, load_dataset
 from orchestrator.eval.scorers import RuleScorer, ScoreResult
 from orchestrator.exchange.data_fetcher import MarketSnapshot
 
@@ -44,6 +45,13 @@ class EvalRunner:
         self._market_agent = market_agent
         self._proposer_agent = proposer_agent
         self._scorer = RuleScorer()
+
+    async def run_default(self) -> EvalReport:
+        """Run evaluation using the built-in golden_v1 dataset."""
+        dataset_dir = os.path.join(os.path.dirname(__file__), "datasets")
+        dataset_path = os.path.join(dataset_dir, "golden_v1.yaml")
+        cases = load_dataset(dataset_path)
+        return await self.run(cases=cases, dataset_name="golden_v1")
 
     async def run(
         self, *, cases: list[EvalCase], dataset_name: str
