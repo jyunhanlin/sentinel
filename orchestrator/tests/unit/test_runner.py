@@ -348,6 +348,114 @@ class TestPipelineRunnerWithRisk:
         paper_engine.open_position.assert_not_called()
 
 
+class TestPipelineRunnerApproval:
+    """Tests for M4 semi-auto approval flow."""
+
+    @pytest.mark.asyncio
+    async def test_approval_required_returns_pending(self):
+        """When approval_manager is set, risk-approved proposals get pending_approval status."""
+        data_fetcher = AsyncMock()
+        data_fetcher.fetch_snapshot.return_value = MagicMock(
+            symbol="BTC/USDT:USDT",
+            current_price=95000.0,
+        )
+
+        sentiment_agent = AsyncMock()
+        sentiment_agent.analyze.return_value = MagicMock(
+            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+        )
+        market_agent = AsyncMock()
+        market_agent.analyze.return_value = MagicMock(
+            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+        )
+        proposer_agent = AsyncMock()
+        proposer_agent.analyze.return_value = MagicMock(
+            output=_make_proposal(side=Side.LONG, risk_pct=1.0),
+            degraded=False, llm_calls=[], messages=[],
+        )
+        risk_checker = MagicMock()
+        risk_checker.check.return_value = RiskResult(approved=True)
+
+        paper_engine = MagicMock()
+        paper_engine.check_sl_tp.return_value = []
+        paper_engine.open_positions_risk_pct = 0.0
+        paper_engine.equity = 10000.0
+        paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
+        paper_engine._trade_repo.count_consecutive_losses.return_value = 0
+
+        approval_manager = MagicMock()
+        approval_manager.create.return_value = MagicMock(
+            approval_id="a-001",
+            snapshot_price=95000.0,
+        )
+
+        runner = PipelineRunner(
+            data_fetcher=data_fetcher,
+            sentiment_agent=sentiment_agent,
+            market_agent=market_agent,
+            proposer_agent=proposer_agent,
+            pipeline_repo=MagicMock(),
+            llm_call_repo=MagicMock(),
+            proposal_repo=MagicMock(),
+            risk_checker=risk_checker,
+            paper_engine=paper_engine,
+            approval_manager=approval_manager,
+        )
+
+        result = await runner.execute("BTC/USDT:USDT")
+        assert result.status == "pending_approval"
+        assert result.approval_id is not None
+        approval_manager.create.assert_called_once()
+        paper_engine.open_position.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_approval_manager_auto_executes(self):
+        """Without approval_manager, should auto-execute as before."""
+        data_fetcher = AsyncMock()
+        data_fetcher.fetch_snapshot.return_value = MagicMock(
+            symbol="BTC/USDT:USDT",
+            current_price=95000.0,
+        )
+        sentiment_agent = AsyncMock()
+        sentiment_agent.analyze.return_value = MagicMock(
+            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+        )
+        market_agent = AsyncMock()
+        market_agent.analyze.return_value = MagicMock(
+            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+        )
+        proposer_agent = AsyncMock()
+        proposer_agent.analyze.return_value = MagicMock(
+            output=_make_proposal(side=Side.LONG, risk_pct=1.0),
+            degraded=False, llm_calls=[], messages=[],
+        )
+        risk_checker = MagicMock()
+        risk_checker.check.return_value = RiskResult(approved=True)
+
+        paper_engine = MagicMock()
+        paper_engine.check_sl_tp.return_value = []
+        paper_engine.open_positions_risk_pct = 0.0
+        paper_engine.equity = 10000.0
+        paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
+        paper_engine._trade_repo.count_consecutive_losses.return_value = 0
+
+        runner = PipelineRunner(
+            data_fetcher=data_fetcher,
+            sentiment_agent=sentiment_agent,
+            market_agent=market_agent,
+            proposer_agent=proposer_agent,
+            pipeline_repo=MagicMock(),
+            llm_call_repo=MagicMock(),
+            proposal_repo=MagicMock(),
+            risk_checker=risk_checker,
+            paper_engine=paper_engine,
+        )
+
+        result = await runner.execute("BTC/USDT:USDT")
+        assert result.status == "completed"
+        paper_engine.open_position.assert_called_once()
+
+
 class TestSaveLLMCalls:
     def test_saves_full_messages_json(self):
         """_save_llm_calls should store full messages, not placeholder."""

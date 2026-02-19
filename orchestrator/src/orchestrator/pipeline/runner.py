@@ -20,6 +20,7 @@ from orchestrator.storage.repository import (
 )
 
 if TYPE_CHECKING:
+    from orchestrator.approval.manager import ApprovalManager
     from orchestrator.exchange.paper_engine import PaperEngine
     from orchestrator.risk.checker import RiskChecker
 
@@ -29,10 +30,11 @@ logger = structlog.get_logger(__name__)
 class PipelineResult(BaseModel, frozen=True):
     run_id: str
     symbol: str
-    status: str  # completed, rejected, risk_rejected, risk_paused, failed
+    status: str  # completed, rejected, risk_rejected, risk_paused, pending_approval, failed
     model_used: str = ""
     proposal: TradeProposal | None = None
     rejection_reason: str = ""
+    approval_id: str | None = None
     sentiment_degraded: bool = False
     market_degraded: bool = False
     proposer_degraded: bool = False
@@ -53,6 +55,7 @@ class PipelineRunner:
         proposal_repo: TradeProposalRepository,
         risk_checker: RiskChecker | None = None,
         paper_engine: PaperEngine | None = None,
+        approval_manager: ApprovalManager | None = None,
     ) -> None:
         self._data_fetcher = data_fetcher
         self._sentiment_agent = sentiment_agent
@@ -63,6 +66,7 @@ class PipelineRunner:
         self._proposal_repo = proposal_repo
         self._risk_checker = risk_checker
         self._paper_engine = paper_engine
+        self._approval_manager = approval_manager
 
     async def execute(
         self, symbol: str, *, timeframe: str = "1h", model_override: str | None = None
@@ -187,11 +191,41 @@ class PipelineRunner:
                         close_results=close_results,
                     )
 
-                # Step 7: Open position if approved and not FLAT
+                # Step 7: Open position or create pending approval
                 if aggregation.proposal.side != Side.FLAT:
-                    self._paper_engine.open_position(
-                        aggregation.proposal, current_price=snapshot.current_price
-                    )
+                    if self._approval_manager is not None:
+                        # Semi-auto: create pending approval
+                        approval = self._approval_manager.create(
+                            proposal=aggregation.proposal,
+                            run_id=run_id,
+                            snapshot_price=snapshot.current_price,
+                        )
+                        self._proposal_repo.save_proposal(
+                            proposal_id=aggregation.proposal.proposal_id,
+                            run_id=run_id,
+                            proposal_json=aggregation.proposal.model_dump_json(),
+                            risk_check_result="pending_approval",
+                        )
+                        self._pipeline_repo.update_run_status(run_id, "pending_approval")
+                        log.info("pipeline_pending_approval", approval_id=approval.approval_id)
+                        return PipelineResult(
+                            run_id=run_id,
+                            symbol=symbol,
+                            status="pending_approval",
+                            model_used=model_used,
+                            proposal=aggregation.proposal,
+                            risk_result=risk_result,
+                            approval_id=approval.approval_id,
+                            sentiment_degraded=sentiment_result.degraded,
+                            market_degraded=market_result.degraded,
+                            proposer_degraded=proposer_result.degraded,
+                            close_results=close_results,
+                        )
+                    else:
+                        # Auto mode: execute immediately
+                        self._paper_engine.open_position(
+                            aggregation.proposal, current_price=snapshot.current_price
+                        )
 
             # Step 8: Save approved proposal and return
             self._proposal_repo.save_proposal(
