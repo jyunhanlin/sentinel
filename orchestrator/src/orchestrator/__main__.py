@@ -19,6 +19,7 @@ from orchestrator.pipeline.runner import PipelineRunner
 from orchestrator.pipeline.scheduler import PipelineScheduler
 from orchestrator.risk.checker import RiskChecker
 from orchestrator.risk.position_sizer import RiskPercentSizer
+from orchestrator.eval.runner import EvalRunner
 from orchestrator.stats.calculator import StatsCalculator
 from orchestrator.storage.database import create_db_engine, init_db
 from orchestrator.storage.repository import (
@@ -149,6 +150,14 @@ def create_app_components(
     bot.set_proposal_repo(proposal_repo)
     bot.set_snapshot_repo(account_snapshot_repo)
 
+    # Eval
+    eval_runner = EvalRunner(
+        sentiment_agent=sentiment_agent,
+        market_agent=market_agent,
+        proposer_agent=proposer_agent,
+    )
+    bot.set_eval_runner(eval_runner)
+
     return {
         "bot": bot,
         "exchange_client": exchange_client,
@@ -158,6 +167,8 @@ def create_app_components(
         "risk_checker": risk_checker,
         "paper_engine": paper_engine,
         "stats_calculator": stats_calculator,
+        "eval_runner": eval_runner,
+        "snapshot_repo": account_snapshot_repo,
     }
 
 
@@ -186,8 +197,6 @@ def _build_components(settings: Settings) -> dict:
 
 
 async def _run_eval(components: dict) -> None:
-    from orchestrator.eval.runner import EvalRunner
-
     eval_runner: EvalRunner = components["eval_runner"]
     report = await eval_runner.run_default()
     print(f"Dataset: {report.dataset_name}")
