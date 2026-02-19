@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from orchestrator.execution.executor import ExecutionResult, LiveExecutor
 from orchestrator.models import EntryOrder, Side, TradeProposal

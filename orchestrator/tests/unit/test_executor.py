@@ -1,8 +1,9 @@
-import pytest
 from unittest.mock import MagicMock
 
-from orchestrator.execution.executor import ExecutionResult, PaperExecutor
+import pytest
+
 from orchestrator.exchange.paper_engine import Position
+from orchestrator.execution.executor import ExecutionResult, PaperExecutor
 from orchestrator.models import EntryOrder, Side, TradeProposal
 
 
