@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from sqlmodel import Session, select
 
 from orchestrator.storage.models import (
     AccountSnapshotRecord,
+    ApprovalRecord,
     LLMCallRecord,
     PaperTradeRecord,
     PipelineRunRecord,
@@ -220,6 +221,77 @@ class PaperTradeRepository:
         )
         trades = list(self._session.exec(statement).all())
         return sum(t.pnl for t in trades if t.closed_at and t.closed_at.date() == day)
+
+
+class ApprovalRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def save_approval(
+        self,
+        *,
+        approval_id: str,
+        proposal_id: str,
+        run_id: str,
+        snapshot_price: float,
+        expires_at: datetime,
+        message_id: int | None = None,
+    ) -> ApprovalRecord:
+        from datetime import UTC
+        from datetime import datetime as dt
+
+        record = ApprovalRecord(
+            approval_id=approval_id,
+            proposal_id=proposal_id,
+            run_id=run_id,
+            snapshot_price=snapshot_price,
+            status="pending",
+            message_id=message_id,
+            created_at=dt.now(UTC),
+            expires_at=expires_at,
+        )
+        self._session.add(record)
+        self._session.commit()
+        self._session.refresh(record)
+        return record
+
+    def get_by_id(self, approval_id: str) -> ApprovalRecord | None:
+        statement = select(ApprovalRecord).where(
+            ApprovalRecord.approval_id == approval_id
+        )
+        return self._session.exec(statement).first()
+
+    def update_status(self, approval_id: str, *, status: str) -> ApprovalRecord:
+        from datetime import UTC
+        from datetime import datetime as dt
+
+        record = self.get_by_id(approval_id)
+        if record is None:
+            raise ValueError(f"Approval {approval_id} not found")
+        record.status = status
+        record.resolved_at = dt.now(UTC)
+        self._session.add(record)
+        self._session.commit()
+        self._session.refresh(record)
+        return record
+
+    def update_message_id(
+        self, approval_id: str, *, message_id: int
+    ) -> ApprovalRecord:
+        record = self.get_by_id(approval_id)
+        if record is None:
+            raise ValueError(f"Approval {approval_id} not found")
+        record.message_id = message_id
+        self._session.add(record)
+        self._session.commit()
+        self._session.refresh(record)
+        return record
+
+    def get_pending(self) -> list[ApprovalRecord]:
+        statement = select(ApprovalRecord).where(
+            ApprovalRecord.status == "pending"
+        )
+        return list(self._session.exec(statement).all())
 
 
 class AccountSnapshotRepository:
