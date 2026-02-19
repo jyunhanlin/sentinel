@@ -9,11 +9,13 @@ from sqlmodel import Session
 from orchestrator.agents.market import MarketAgent
 from orchestrator.agents.proposer import ProposerAgent
 from orchestrator.agents.sentiment import SentimentAgent
+from orchestrator.approval.manager import ApprovalManager
 from orchestrator.config import Settings
 from orchestrator.eval.runner import EvalRunner
 from orchestrator.exchange.client import ExchangeClient
 from orchestrator.exchange.data_fetcher import DataFetcher
 from orchestrator.exchange.paper_engine import PaperEngine
+from orchestrator.execution.executor import LiveExecutor, PaperExecutor
 from orchestrator.llm.client import LLMClient
 from orchestrator.logging import setup_logging
 from orchestrator.pipeline.runner import PipelineRunner
@@ -24,6 +26,7 @@ from orchestrator.stats.calculator import StatsCalculator
 from orchestrator.storage.database import create_db_engine, init_db
 from orchestrator.storage.repository import (
     AccountSnapshotRepository,
+    ApprovalRepository,
     LLMCallRepository,
     PaperTradeRepository,
     PipelineRepository,
@@ -65,6 +68,10 @@ def create_app_components(
     paper_initial_equity: float = 10000.0,
     paper_taker_fee_rate: float = 0.0005,
     paper_maker_fee_rate: float = 0.0002,
+    # Semi-auto Trading
+    trading_mode: str = "paper",
+    approval_timeout_minutes: int = 15,
+    price_deviation_threshold: float = 0.01,
 ) -> dict:
     # Database
     db_engine = create_db_engine(database_url)
@@ -117,6 +124,23 @@ def create_app_components(
     )
     paper_engine.rebuild_from_db()
 
+    # Approval & Execution (M4)
+    approval_repo = ApprovalRepository(session)
+    approval_manager = ApprovalManager(
+        repo=approval_repo, timeout_minutes=approval_timeout_minutes
+    )
+
+    position_sizer = RiskPercentSizer()
+    if trading_mode == "live":
+        executor = LiveExecutor(
+            exchange_client=exchange_client,
+            position_sizer=position_sizer,
+            paper_engine=paper_engine,
+            price_deviation_threshold=price_deviation_threshold,
+        )
+    else:
+        executor = PaperExecutor(paper_engine=paper_engine)
+
     # Pipeline
     runner = PipelineRunner(
         data_fetcher=data_fetcher,
@@ -128,6 +152,7 @@ def create_app_components(
         proposal_repo=proposal_repo,
         risk_checker=risk_checker,
         paper_engine=paper_engine,
+        approval_manager=approval_manager,
     )
 
     symbols = pipeline_symbols or ["BTC/USDT:USDT", "ETH/USDT:USDT"]
@@ -136,6 +161,7 @@ def create_app_components(
         symbols=symbols,
         interval_minutes=pipeline_interval_minutes,
         premium_model=llm_model_premium,
+        approval_manager=approval_manager,
     )
 
     # Telegram
@@ -149,6 +175,9 @@ def create_app_components(
     bot.set_trade_repo(paper_trade_repo)
     bot.set_proposal_repo(proposal_repo)
     bot.set_snapshot_repo(account_snapshot_repo)
+    bot.set_approval_manager(approval_manager)
+    bot.set_executor(executor)
+    bot.set_data_fetcher(data_fetcher)
 
     # Eval
     eval_runner = EvalRunner(
@@ -169,6 +198,8 @@ def create_app_components(
         "stats_calculator": stats_calculator,
         "eval_runner": eval_runner,
         "snapshot_repo": account_snapshot_repo,
+        "approval_manager": approval_manager,
+        "executor": executor,
     }
 
 
@@ -193,6 +224,9 @@ def _build_components(settings: Settings) -> dict:
         paper_initial_equity=settings.paper_initial_equity,
         paper_taker_fee_rate=settings.paper_taker_fee_rate,
         paper_maker_fee_rate=settings.paper_maker_fee_rate,
+        trading_mode=settings.trading_mode,
+        approval_timeout_minutes=settings.approval_timeout_minutes,
+        price_deviation_threshold=settings.price_deviation_threshold,
     )
 
 
