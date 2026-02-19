@@ -224,11 +224,23 @@ class AccountSnapshotRepository:
         equity: float,
         open_count: int,
         daily_pnl: float,
+        total_pnl: float = 0.0,
+        win_rate: float = 0.0,
+        profit_factor: float = 0.0,
+        max_drawdown_pct: float = 0.0,
+        sharpe_ratio: float = 0.0,
+        total_trades: int = 0,
     ) -> AccountSnapshotRecord:
         record = AccountSnapshotRecord(
             equity=equity,
             open_positions_count=open_count,
             daily_pnl=daily_pnl,
+            total_pnl=total_pnl,
+            win_rate=win_rate,
+            profit_factor=profit_factor,
+            max_drawdown_pct=max_drawdown_pct,
+            sharpe_ratio=sharpe_ratio,
+            total_trades=total_trades,
         )
         self._session.add(record)
         self._session.commit()

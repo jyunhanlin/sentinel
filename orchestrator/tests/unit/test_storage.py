@@ -196,6 +196,30 @@ class TestAccountSnapshotRepository:
         assert latest.open_positions_count == 2
 
 
+class TestAccountSnapshotStatsFields:
+    def test_snapshot_has_stats_fields(self, session):
+        """AccountSnapshotRecord should have performance stats fields."""
+        from orchestrator.storage.models import AccountSnapshotRecord
+
+        snapshot = AccountSnapshotRecord(
+            equity=10500.0,
+            open_positions_count=2,
+            daily_pnl=150.0,
+            total_pnl=500.0,
+            win_rate=0.625,
+            profit_factor=1.85,
+            max_drawdown_pct=4.2,
+            sharpe_ratio=1.32,
+            total_trades=16,
+        )
+        assert snapshot.total_pnl == 500.0
+        assert snapshot.win_rate == 0.625
+        assert snapshot.profit_factor == 1.85
+        assert snapshot.max_drawdown_pct == 4.2
+        assert snapshot.sharpe_ratio == 1.32
+        assert snapshot.total_trades == 16
+
+
 class TestTradeProposalRepository:
     def test_save_and_get_proposal(self, session):
         repo = TradeProposalRepository(session)
