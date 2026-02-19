@@ -1,7 +1,7 @@
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from orchestrator.storage.models import AccountSnapshotRecord, PaperTradeRecord, PipelineRunRecord
+from orchestrator.storage.models import PipelineRunRecord
 from orchestrator.storage.repository import (
     AccountSnapshotRepository,
     LLMCallRepository,

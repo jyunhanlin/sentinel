@@ -17,5 +17,5 @@ class TestSummarizeOhlcv:
     def test_limits_to_max_candles(self):
         candles = [[i, float(i), float(i), float(i), float(i), 100.0] for i in range(20)]
         text = summarize_ohlcv(candles, max_candles=3)
-        lines = [l for l in text.strip().split("\n") if l.strip()]
+        lines = [line for line in text.strip().split("\n") if line.strip()]
         assert len(lines) == 3

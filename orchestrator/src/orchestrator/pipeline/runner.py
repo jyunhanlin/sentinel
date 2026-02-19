@@ -143,7 +143,11 @@ class PipelineRunner:
 
                 paper_trade_repo = self._paper_engine._trade_repo
                 daily_pnl = paper_trade_repo.get_daily_pnl(datetime.now(UTC).date())
-                daily_loss_pct = abs(daily_pnl) / self._paper_engine.equity * 100 if daily_pnl < 0 else 0.0
+                daily_loss_pct = (
+                    abs(daily_pnl) / self._paper_engine.equity * 100
+                    if daily_pnl < 0
+                    else 0.0
+                )
 
                 risk_result = self._risk_checker.check(
                     proposal=aggregation.proposal,
@@ -165,7 +169,9 @@ class PipelineRunner:
                         risk_check_reason=risk_result.reason,
                     )
                     self._pipeline_repo.update_run_status(run_id, status)
-                    log.warning("pipeline_risk_blocked", status=status, rule=risk_result.rule_violated)
+                    log.warning(
+                        "pipeline_risk_blocked", status=status, rule=risk_result.rule_violated
+                    )
 
                     return PipelineResult(
                         run_id=run_id,

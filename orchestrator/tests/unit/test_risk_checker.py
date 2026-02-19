@@ -1,7 +1,6 @@
-import pytest
 
 from orchestrator.models import EntryOrder, Side, TradeProposal
-from orchestrator.risk.checker import RiskChecker, RiskResult
+from orchestrator.risk.checker import RiskChecker
 
 
 def _make_proposal(

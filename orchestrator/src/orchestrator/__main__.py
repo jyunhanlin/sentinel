@@ -9,14 +9,14 @@ from orchestrator.agents.sentiment import SentimentAgent
 from orchestrator.config import Settings
 from orchestrator.exchange.client import ExchangeClient
 from orchestrator.exchange.data_fetcher import DataFetcher
+from orchestrator.exchange.paper_engine import PaperEngine
 from orchestrator.llm.client import LLMClient
 from orchestrator.logging import setup_logging
 from orchestrator.pipeline.runner import PipelineRunner
 from orchestrator.pipeline.scheduler import PipelineScheduler
-from orchestrator.storage.database import create_db_engine, init_db
-from orchestrator.exchange.paper_engine import PaperEngine
 from orchestrator.risk.checker import RiskChecker
 from orchestrator.risk.position_sizer import RiskPercentSizer
+from orchestrator.storage.database import create_db_engine, init_db
 from orchestrator.storage.repository import (
     AccountSnapshotRepository,
     LLMCallRepository,

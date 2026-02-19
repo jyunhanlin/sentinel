@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from sqlmodel import Session, select
-
 from datetime import date
+
+from sqlmodel import Session, select
 
 from orchestrator.storage.models import (
     AccountSnapshotRecord,
