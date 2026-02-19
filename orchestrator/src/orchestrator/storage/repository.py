@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from sqlmodel import Session, select
 
-from orchestrator.storage.models import LLMCallRecord, PipelineRunRecord, TradeProposalRecord
+from datetime import date
+
+from orchestrator.storage.models import (
+    AccountSnapshotRecord,
+    LLMCallRecord,
+    PaperTradeRecord,
+    PipelineRunRecord,
+    TradeProposalRecord,
+)
 
 
 class PipelineRepository:
@@ -109,3 +117,127 @@ class TradeProposalRepository:
             .limit(limit)
         )
         return list(self._session.exec(statement).all())
+
+
+class PaperTradeRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def save_trade(
+        self,
+        *,
+        trade_id: str,
+        proposal_id: str,
+        symbol: str,
+        side: str,
+        entry_price: float,
+        quantity: float,
+        risk_pct: float = 0.0,
+    ) -> PaperTradeRecord:
+        record = PaperTradeRecord(
+            trade_id=trade_id,
+            proposal_id=proposal_id,
+            symbol=symbol,
+            side=side,
+            entry_price=entry_price,
+            quantity=quantity,
+            risk_pct=risk_pct,
+        )
+        self._session.add(record)
+        self._session.commit()
+        self._session.refresh(record)
+        return record
+
+    def get_by_trade_id(self, trade_id: str) -> PaperTradeRecord | None:
+        statement = select(PaperTradeRecord).where(PaperTradeRecord.trade_id == trade_id)
+        return self._session.exec(statement).first()
+
+    def get_open_positions(self) -> list[PaperTradeRecord]:
+        statement = select(PaperTradeRecord).where(PaperTradeRecord.status == "open")
+        return list(self._session.exec(statement).all())
+
+    def update_trade_closed(
+        self,
+        trade_id: str,
+        *,
+        exit_price: float,
+        pnl: float,
+        fees: float,
+    ) -> PaperTradeRecord:
+        from datetime import UTC, datetime
+
+        trade = self.get_by_trade_id(trade_id)
+        if trade is None:
+            raise ValueError(f"Trade {trade_id} not found")
+        trade.exit_price = exit_price
+        trade.pnl = pnl
+        trade.fees = fees
+        trade.status = "closed"
+        trade.closed_at = datetime.now(UTC)
+        self._session.add(trade)
+        self._session.commit()
+        self._session.refresh(trade)
+        return trade
+
+    def get_recent_closed(self, *, limit: int = 10) -> list[PaperTradeRecord]:
+        statement = (
+            select(PaperTradeRecord)
+            .where(PaperTradeRecord.status == "closed")
+            .order_by(PaperTradeRecord.closed_at.desc())
+            .limit(limit)
+        )
+        return list(self._session.exec(statement).all())
+
+    def count_consecutive_losses(self) -> int:
+        """Count consecutive losses from most recent closed trade backwards."""
+        statement = (
+            select(PaperTradeRecord)
+            .where(PaperTradeRecord.status == "closed")
+            .order_by(PaperTradeRecord.closed_at.desc())
+        )
+        trades = list(self._session.exec(statement).all())
+        count = 0
+        for trade in trades:
+            if trade.pnl < 0:
+                count += 1
+            else:
+                break
+        return count
+
+    def get_daily_pnl(self, day: date) -> float:
+        """Sum PnL for all closed trades on a given date."""
+        statement = (
+            select(PaperTradeRecord)
+            .where(PaperTradeRecord.status == "closed")
+        )
+        trades = list(self._session.exec(statement).all())
+        return sum(t.pnl for t in trades if t.closed_at and t.closed_at.date() == day)
+
+
+class AccountSnapshotRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def save_snapshot(
+        self,
+        *,
+        equity: float,
+        open_count: int,
+        daily_pnl: float,
+    ) -> AccountSnapshotRecord:
+        record = AccountSnapshotRecord(
+            equity=equity,
+            open_positions_count=open_count,
+            daily_pnl=daily_pnl,
+        )
+        self._session.add(record)
+        self._session.commit()
+        self._session.refresh(record)
+        return record
+
+    def get_latest(self) -> AccountSnapshotRecord | None:
+        statement = (
+            select(AccountSnapshotRecord)
+            .order_by(AccountSnapshotRecord.created_at.desc())
+        )
+        return self._session.exec(statement).first()

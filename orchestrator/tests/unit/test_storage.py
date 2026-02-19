@@ -1,9 +1,11 @@
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from orchestrator.storage.models import PipelineRunRecord
+from orchestrator.storage.models import AccountSnapshotRecord, PaperTradeRecord, PipelineRunRecord
 from orchestrator.storage.repository import (
+    AccountSnapshotRepository,
     LLMCallRepository,
+    PaperTradeRepository,
     PipelineRepository,
     TradeProposalRepository,
 )
@@ -84,6 +86,114 @@ class TestLLMCallRepository:
         )
         calls = repo.list_by_run("run-001")
         assert len(calls) == 2
+
+
+class TestPaperTradeRepository:
+    def test_save_and_get_open(self, session):
+        repo = PaperTradeRepository(session)
+        repo.save_trade(
+            trade_id="t-001",
+            proposal_id="p-001",
+            symbol="BTC/USDT:USDT",
+            side="long",
+            entry_price=95000.0,
+            quantity=0.075,
+            risk_pct=1.5,
+        )
+        open_positions = repo.get_open_positions()
+        assert len(open_positions) == 1
+        assert open_positions[0].trade_id == "t-001"
+        assert open_positions[0].status == "open"
+
+    def test_close_trade(self, session):
+        repo = PaperTradeRepository(session)
+        repo.save_trade(
+            trade_id="t-002",
+            proposal_id="p-002",
+            symbol="BTC/USDT:USDT",
+            side="long",
+            entry_price=95000.0,
+            quantity=0.075,
+            risk_pct=1.5,
+        )
+        repo.update_trade_closed(
+            trade_id="t-002",
+            exit_price=93000.0,
+            pnl=-150.0,
+            fees=7.13,
+        )
+        trade = repo.get_by_trade_id("t-002")
+        assert trade.status == "closed"
+        assert trade.exit_price == 93000.0
+        assert trade.pnl == -150.0
+
+    def test_count_consecutive_losses(self, session):
+        repo = PaperTradeRepository(session)
+        # 3 losses in a row
+        for i in range(3):
+            repo.save_trade(
+                trade_id=f"t-loss-{i}",
+                proposal_id=f"p-{i}",
+                symbol="BTC/USDT:USDT",
+                side="long",
+                entry_price=95000.0,
+                quantity=0.075,
+                risk_pct=1.0,
+            )
+            repo.update_trade_closed(
+                trade_id=f"t-loss-{i}",
+                exit_price=93000.0,
+                pnl=-150.0,
+                fees=7.0,
+            )
+        assert repo.count_consecutive_losses() == 3
+
+    def test_consecutive_losses_reset_on_win(self, session):
+        repo = PaperTradeRepository(session)
+        # 1 loss then 1 win
+        repo.save_trade(
+            trade_id="t-l1", proposal_id="p-1", symbol="BTC/USDT:USDT",
+            side="long", entry_price=95000.0, quantity=0.075, risk_pct=1.0,
+        )
+        repo.update_trade_closed(trade_id="t-l1", exit_price=93000.0, pnl=-150.0, fees=7.0)
+        repo.save_trade(
+            trade_id="t-w1", proposal_id="p-2", symbol="BTC/USDT:USDT",
+            side="long", entry_price=93000.0, quantity=0.08, risk_pct=1.0,
+        )
+        repo.update_trade_closed(trade_id="t-w1", exit_price=95000.0, pnl=160.0, fees=7.0)
+        assert repo.count_consecutive_losses() == 0
+
+    def test_get_daily_pnl(self, session):
+        from datetime import UTC, datetime
+        repo = PaperTradeRepository(session)
+        repo.save_trade(
+            trade_id="t-d1", proposal_id="p-1", symbol="BTC/USDT:USDT",
+            side="long", entry_price=95000.0, quantity=0.075, risk_pct=1.0,
+        )
+        repo.update_trade_closed(trade_id="t-d1", exit_price=93000.0, pnl=-150.0, fees=7.0)
+        today = datetime.now(UTC).date()
+        assert repo.get_daily_pnl(today) == pytest.approx(-150.0)
+
+    def test_get_recent_closed(self, session):
+        repo = PaperTradeRepository(session)
+        repo.save_trade(
+            trade_id="t-r1", proposal_id="p-1", symbol="BTC/USDT:USDT",
+            side="long", entry_price=95000.0, quantity=0.075, risk_pct=1.0,
+        )
+        repo.update_trade_closed(trade_id="t-r1", exit_price=97000.0, pnl=150.0, fees=7.0)
+        recent = repo.get_recent_closed(limit=5)
+        assert len(recent) == 1
+        assert recent[0].trade_id == "t-r1"
+
+
+class TestAccountSnapshotRepository:
+    def test_save_and_get_latest(self, session):
+        repo = AccountSnapshotRepository(session)
+        repo.save_snapshot(equity=10000.0, open_count=2, daily_pnl=-50.0)
+        latest = repo.get_latest()
+        assert latest is not None
+        assert latest.equity == 10000.0
+        assert latest.open_positions_count == 2
 
 
 class TestTradeProposalRepository:

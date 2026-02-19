@@ -56,6 +56,7 @@ class PaperTradeRecord(SQLModel, table=True):
     quantity: float
     pnl: float = 0.0
     fees: float = 0.0
+    risk_pct: float = 0.0
     status: str = "open"  # open, closed
     opened_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     closed_at: datetime | None = None
