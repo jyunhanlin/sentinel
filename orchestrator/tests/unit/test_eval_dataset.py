@@ -4,7 +4,7 @@ import tempfile
 import pytest
 import yaml
 
-from orchestrator.eval.dataset import EvalCase, ExpectedRange, load_dataset
+from orchestrator.eval.dataset import ExpectedRange, load_dataset
 
 
 class TestEvalDataset:

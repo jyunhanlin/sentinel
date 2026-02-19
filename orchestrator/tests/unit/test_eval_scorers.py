@@ -3,7 +3,10 @@ import pytest
 from orchestrator.eval.dataset import ExpectedProposal, ExpectedRange, ExpectedSentiment
 from orchestrator.eval.scorers import RuleScorer, ScoreResult
 from orchestrator.models import (
-    EntryOrder, SentimentReport, Side, TradeProposal,
+    EntryOrder,
+    SentimentReport,
+    Side,
+    TradeProposal,
 )
 
 

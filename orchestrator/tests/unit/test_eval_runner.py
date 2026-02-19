@@ -1,18 +1,26 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from orchestrator.eval.dataset import (
-    EvalCase, ExpectedOutputs, ExpectedProposal,
+    EvalCase,
+    ExpectedOutputs,
+    ExpectedProposal,
 )
-from orchestrator.eval.runner import EvalRunner, EvalReport
+from orchestrator.eval.runner import EvalReport, EvalRunner
 
 
 class TestEvalRunner:
     @pytest.mark.asyncio
     async def test_run_single_passing_case(self):
         from orchestrator.models import (
-            EntryOrder, Side, TradeProposal, SentimentReport,
-            MarketInterpretation, Trend, VolatilityRegime,
+            EntryOrder,
+            MarketInterpretation,
+            SentimentReport,
+            Side,
+            TradeProposal,
+            Trend,
+            VolatilityRegime,
         )
 
         case = EvalCase(
@@ -65,8 +73,13 @@ class TestEvalRunner:
     @pytest.mark.asyncio
     async def test_run_single_failing_case(self):
         from orchestrator.models import (
-            EntryOrder, Side, TradeProposal, SentimentReport,
-            MarketInterpretation, Trend, VolatilityRegime,
+            EntryOrder,
+            MarketInterpretation,
+            SentimentReport,
+            Side,
+            TradeProposal,
+            Trend,
+            VolatilityRegime,
         )
 
         case = EvalCase(

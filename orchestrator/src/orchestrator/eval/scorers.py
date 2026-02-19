@@ -30,7 +30,10 @@ class RuleScorer:
             results.append(ScoreResult(
                 field="side", passed=passed,
                 expected=str(expected.side), actual=proposal.side.value,
-                reason="" if passed else f"expected one of {expected.side}, got {proposal.side.value}",
+                reason=(
+                    "" if passed
+                    else f"expected one of {expected.side}, got {proposal.side.value}"
+                ),
             ))
 
         if expected.confidence is not None:
@@ -87,7 +90,10 @@ class RuleScorer:
             results.append(ScoreResult(
                 field="trend", passed=passed,
                 expected=str(expected.trend), actual=output.trend.value,
-                reason="" if passed else f"expected one of {expected.trend}, got {output.trend.value}",
+                reason=(
+                    "" if passed
+                    else f"expected one of {expected.trend}, got {output.trend.value}"
+                ),
             ))
 
         if expected.volatility_regime is not None:

@@ -1,10 +1,13 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from orchestrator.eval.consistency import ConsistencyChecker
 from orchestrator.eval.dataset import EvalCase, ExpectedOutputs
 from orchestrator.models import (
-    EntryOrder, Side, TradeProposal,
+    EntryOrder,
+    Side,
+    TradeProposal,
 )
 
 

@@ -10,6 +10,7 @@ from orchestrator.agents.market import MarketAgent
 from orchestrator.agents.proposer import ProposerAgent
 from orchestrator.agents.sentiment import SentimentAgent
 from orchestrator.config import Settings
+from orchestrator.eval.runner import EvalRunner
 from orchestrator.exchange.client import ExchangeClient
 from orchestrator.exchange.data_fetcher import DataFetcher
 from orchestrator.exchange.paper_engine import PaperEngine
@@ -19,7 +20,6 @@ from orchestrator.pipeline.runner import PipelineRunner
 from orchestrator.pipeline.scheduler import PipelineScheduler
 from orchestrator.risk.checker import RiskChecker
 from orchestrator.risk.position_sizer import RiskPercentSizer
-from orchestrator.eval.runner import EvalRunner
 from orchestrator.stats.calculator import StatsCalculator
 from orchestrator.storage.database import create_db_engine, init_db
 from orchestrator.storage.repository import (

@@ -674,7 +674,7 @@ class TestCoinHandlerDB:
 class TestEvalHandlerWithRunner:
     @pytest.mark.asyncio
     async def test_eval_handler_runs(self):
-        from orchestrator.eval.runner import CaseResult, EvalReport, ScoreResult
+        from orchestrator.eval.runner import CaseResult, EvalReport
 
         bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_runner = AsyncMock()
