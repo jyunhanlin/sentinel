@@ -9,6 +9,7 @@ from orchestrator.llm.backend import (
     LLMBackend,
     _extract_system_prompt,
     _flatten_messages,
+    _map_model_name,
 )
 from orchestrator.llm.client import LLMCallResult
 
@@ -120,3 +121,20 @@ class TestMessageConversion:
         assert "Analyze BTC." in result
         assert "(invalid output)" in result
         assert "Your previous response failed validation." in result
+
+
+class TestModelNameMapping:
+    def test_maps_sonnet(self):
+        assert _map_model_name("anthropic/claude-sonnet-4-6") == "sonnet"
+
+    def test_maps_opus(self):
+        assert _map_model_name("anthropic/claude-opus-4-6") == "opus"
+
+    def test_maps_haiku(self):
+        assert _map_model_name("anthropic/claude-haiku-4-5-20251001") == "haiku"
+
+    def test_passes_through_unknown(self):
+        assert _map_model_name("custom-model") == "custom-model"
+
+    def test_passes_through_alias(self):
+        assert _map_model_name("sonnet") == "sonnet"

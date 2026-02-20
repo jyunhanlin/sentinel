@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from abc import ABC, abstractmethod
 
@@ -84,3 +85,16 @@ def _flatten_messages(messages: list[dict[str, str]]) -> str:
         elif role == "assistant":
             parts.append(f"[Assistant]: {content}")
     return "\n\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Model name mapping
+# ---------------------------------------------------------------------------
+
+
+def _map_model_name(model: str) -> str:
+    """Map LiteLLM model names to Claude CLI aliases."""
+    match = re.search(r"claude-(sonnet|opus|haiku)", model)
+    if match:
+        return match.group(1)
+    return model
