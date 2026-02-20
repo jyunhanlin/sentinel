@@ -57,3 +57,30 @@ class LiteLLMBackend(LLMBackend):
             output_tokens=usage.completion_tokens if usage else 0,
             latency_ms=elapsed_ms,
         )
+
+
+# ---------------------------------------------------------------------------
+# Message conversion helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_system_prompt(
+    messages: list[dict[str, str]],
+) -> tuple[str | None, list[dict[str, str]]]:
+    """Separate system message from the rest."""
+    if messages and messages[0]["role"] == "system":
+        return messages[0]["content"], messages[1:]
+    return None, messages
+
+
+def _flatten_messages(messages: list[dict[str, str]]) -> str:
+    """Flatten user/assistant messages into a single prompt string."""
+    parts: list[str] = []
+    for msg in messages:
+        role = msg["role"]
+        content = msg["content"]
+        if role == "user":
+            parts.append(content)
+        elif role == "assistant":
+            parts.append(f"[Assistant]: {content}")
+    return "\n\n".join(parts)

@@ -4,7 +4,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from orchestrator.llm.backend import LiteLLMBackend, LLMBackend
+from orchestrator.llm.backend import (
+    LiteLLMBackend,
+    LLMBackend,
+    _extract_system_prompt,
+    _flatten_messages,
+)
 from orchestrator.llm.client import LLMCallResult
 
 
@@ -82,3 +87,36 @@ class TestLiteLLMBackend:
 
         assert result.input_tokens == 0
         assert result.output_tokens == 0
+
+
+class TestMessageConversion:
+    def test_extract_system_prompt_from_messages(self):
+        messages = [
+            {"role": "system", "content": "You are an analyst."},
+            {"role": "user", "content": "Analyze BTC."},
+        ]
+        system, remaining = _extract_system_prompt(messages)
+        assert system == "You are an analyst."
+        assert remaining == [{"role": "user", "content": "Analyze BTC."}]
+
+    def test_extract_system_prompt_no_system_message(self):
+        messages = [{"role": "user", "content": "Hello"}]
+        system, remaining = _extract_system_prompt(messages)
+        assert system is None
+        assert remaining == [{"role": "user", "content": "Hello"}]
+
+    def test_flatten_single_user_message(self):
+        messages = [{"role": "user", "content": "Analyze BTC."}]
+        result = _flatten_messages(messages)
+        assert result == "Analyze BTC."
+
+    def test_flatten_multi_turn_retry(self):
+        messages = [
+            {"role": "user", "content": "Analyze BTC."},
+            {"role": "assistant", "content": "(invalid output)"},
+            {"role": "user", "content": "Your previous response failed validation."},
+        ]
+        result = _flatten_messages(messages)
+        assert "Analyze BTC." in result
+        assert "(invalid output)" in result
+        assert "Your previous response failed validation." in result
