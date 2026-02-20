@@ -12,11 +12,11 @@ Scheduler (every N min)
     ├─ LLM-1 (Sentiment) ──┐
     │                       ├─ LLM-3 (Proposer) → Aggregator → Risk Check
     ├─ LLM-2 (Market) ─────┘                                      │
-    │                                                              ▼
+    │                                                             ▼
     │                                              TG Push [Approve / Reject]
-    │                                                              │
+    │                                                             │
     │                                                    OrderExecutor (Paper/Live)
-    │                                                              │
+    │                                                             │
     └─ SL/TP Monitor ──────────────────────────────── Close Report
 ```
 
