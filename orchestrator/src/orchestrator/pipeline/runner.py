@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from orchestrator.agents.base import AgentResult, BaseAgent
 from orchestrator.exchange.data_fetcher import DataFetcher
 from orchestrator.exchange.paper_engine import CloseResult
-from orchestrator.models import Side, TradeProposal
+from orchestrator.models import MarketInterpretation, SentimentReport, Side, TradeProposal
 from orchestrator.pipeline.aggregator import aggregate_proposal
 from orchestrator.risk.checker import RiskResult
 from orchestrator.storage.repository import (
@@ -47,9 +47,9 @@ class PipelineRunner:
         self,
         *,
         data_fetcher: DataFetcher,
-        sentiment_agent: BaseAgent,
-        market_agent: BaseAgent,
-        proposer_agent: BaseAgent,
+        sentiment_agent: BaseAgent[SentimentReport],
+        market_agent: BaseAgent[MarketInterpretation],
+        proposer_agent: BaseAgent[TradeProposal],
         pipeline_repo: PipelineRepository,
         llm_call_repo: LLMCallRepository,
         proposal_repo: TradeProposalRepository,
@@ -260,7 +260,7 @@ class PipelineRunner:
                 rejection_reason=str(e),
             )
 
-    def _save_llm_calls(self, run_id: str, agent_type: str, result: AgentResult) -> None:
+    def _save_llm_calls(self, run_id: str, agent_type: str, result: AgentResult[BaseModel]) -> None:
         import json
 
         prompt_json = json.dumps(result.messages, ensure_ascii=False) if result.messages else ""

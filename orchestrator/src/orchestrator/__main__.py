@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from typing import Any
 
 import structlog
 from sqlmodel import Session
@@ -72,7 +73,7 @@ def create_app_components(
     trading_mode: str = "paper",
     approval_timeout_minutes: int = 15,
     price_deviation_threshold: float = 0.01,
-) -> dict:
+) -> dict[str, Any]:
     # Database
     db_engine = create_db_engine(database_url)
     init_db(db_engine)
@@ -203,7 +204,7 @@ def create_app_components(
     }
 
 
-def _build_components(settings: Settings) -> dict:
+def _build_components(settings: Settings) -> dict[str, Any]:
     return create_app_components(
         telegram_bot_token=settings.telegram_bot_token,
         telegram_admin_chat_ids=settings.telegram_admin_chat_ids,
@@ -230,7 +231,7 @@ def _build_components(settings: Settings) -> dict:
     )
 
 
-async def _run_eval(components: dict) -> None:
+async def _run_eval(components: dict[str, Any]) -> None:
     eval_runner: EvalRunner = components["eval_runner"]
     report = await eval_runner.run_default()
     print(f"Dataset: {report.dataset_name}")
@@ -247,7 +248,7 @@ async def _run_eval(components: dict) -> None:
                 print(f"    {s.field}: {s.reason}")
 
 
-def _run_perf(components: dict) -> None:
+def _run_perf(components: dict[str, Any]) -> None:
     from orchestrator.telegram.formatters import format_perf_report
 
     snapshot_repo = components.get("snapshot_repo")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from datetime import date, datetime
 from typing import Protocol
 
 from pydantic import BaseModel
@@ -9,7 +10,7 @@ from pydantic import BaseModel
 
 class ClosedTrade(Protocol):
     pnl: float
-    closed_at: object  # datetime with .date()
+    closed_at: datetime | None
 
 
 class PerformanceStats(BaseModel, frozen=True):
@@ -26,7 +27,7 @@ class PerformanceStats(BaseModel, frozen=True):
 
 class StatsCalculator:
     def calculate(
-        self, *, closed_trades: list, initial_equity: float
+        self, *, closed_trades: list[ClosedTrade], initial_equity: float
     ) -> PerformanceStats:
         if not closed_trades:
             return PerformanceStats(
@@ -65,7 +66,7 @@ class StatsCalculator:
             sharpe_ratio=sharpe_ratio,
         )
 
-    def _calc_max_drawdown(self, trades: list, initial_equity: float) -> float:
+    def _calc_max_drawdown(self, trades: list[ClosedTrade], initial_equity: float) -> float:
         equity = initial_equity
         peak = equity
         max_dd = 0.0
@@ -78,9 +79,9 @@ class StatsCalculator:
                 max_dd = dd
         return max_dd * 100  # as percentage
 
-    def _calc_sharpe(self, trades: list, initial_equity: float) -> float:
+    def _calc_sharpe(self, trades: list[ClosedTrade], initial_equity: float) -> float:
         # Group PnL by date
-        daily_pnl: dict[object, float] = defaultdict(float)
+        daily_pnl: dict[date, float] = defaultdict(float)
         for t in trades:
             if t.closed_at is not None:
                 day = t.closed_at.date()

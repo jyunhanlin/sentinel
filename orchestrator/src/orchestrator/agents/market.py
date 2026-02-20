@@ -9,7 +9,7 @@ from orchestrator.models import MarketInterpretation, Trend, VolatilityRegime
 class MarketAgent(BaseAgent[MarketInterpretation]):
     output_model = MarketInterpretation
 
-    def _build_messages(self, **kwargs) -> list[dict]:
+    def _build_messages(self, **kwargs) -> list[dict[str, str]]:
         snapshot: MarketSnapshot = kwargs["snapshot"]
 
         system_prompt = (

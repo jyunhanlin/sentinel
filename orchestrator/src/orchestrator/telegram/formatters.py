@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from orchestrator.exchange.paper_engine import CloseResult
 from orchestrator.risk.checker import RiskResult
 from orchestrator.stats.calculator import PerformanceStats
 
 if TYPE_CHECKING:
+    from orchestrator.approval.manager import PendingApproval
+    from orchestrator.execution.executor import ExecutionResult
     from orchestrator.pipeline.runner import PipelineResult
+    from orchestrator.storage.models import PaperTradeRecord, TradeProposalRecord
 
 
 def format_welcome() -> str:
@@ -123,7 +126,7 @@ def format_risk_rejection(
     return "\n".join(lines)
 
 
-def format_status_from_records(records: list) -> str:
+def format_status_from_records(records: list[TradeProposalRecord]) -> str:
     """Format status from DB TradeProposalRecords (fallback when no in-memory results)."""
     import json
 
@@ -168,7 +171,7 @@ def format_perf_report(stats: PerformanceStats) -> str:
     return "\n".join(lines)
 
 
-def format_eval_report(report: dict) -> str:
+def format_eval_report(report: dict[str, Any]) -> str:
     lines = [
         f"Eval Report ({report['dataset_name']})",
         "──────────────────────────",
@@ -186,7 +189,7 @@ def format_eval_report(report: dict) -> str:
     return "\n".join(lines)
 
 
-def format_pending_approval(approval) -> str:
+def format_pending_approval(approval: PendingApproval) -> str:
     """Format a PendingApproval for TG push with inline keyboard context."""
     p = approval.proposal
     lines = [
@@ -208,7 +211,7 @@ def format_pending_approval(approval) -> str:
     return "\n".join(lines)
 
 
-def format_execution_result(result) -> str:
+def format_execution_result(result: ExecutionResult) -> str:
     """Format an ExecutionResult for TG confirmation."""
     lines = [
         f"[EXECUTED] {result.symbol} {result.side.upper()}",
@@ -223,7 +226,7 @@ def format_execution_result(result) -> str:
     return "\n".join(lines)
 
 
-def format_history(trades: list) -> str:
+def format_history(trades: list[PaperTradeRecord]) -> str:
     if not trades:
         return "No closed trades yet."
 

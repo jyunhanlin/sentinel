@@ -10,12 +10,13 @@ from orchestrator.exchange.data_fetcher import MarketSnapshot
 
 if TYPE_CHECKING:
     from orchestrator.agents.base import BaseAgent
+    from orchestrator.models import TradeProposal
 
 logger = structlog.get_logger(__name__)
 
 
 class ConsistencyChecker:
-    def __init__(self, *, proposer_agent: BaseAgent) -> None:
+    def __init__(self, *, proposer_agent: BaseAgent[TradeProposal]) -> None:
         self._proposer_agent = proposer_agent
 
     async def check(self, case: EvalCase, *, runs: int = 3) -> float:

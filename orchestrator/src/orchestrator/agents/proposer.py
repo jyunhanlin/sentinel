@@ -14,7 +14,7 @@ from orchestrator.models import (
 class ProposerAgent(BaseAgent[TradeProposal]):
     output_model = TradeProposal
 
-    def _build_messages(self, **kwargs) -> list[dict]:
+    def _build_messages(self, **kwargs) -> list[dict[str, str]]:
         snapshot: MarketSnapshot = kwargs["snapshot"]
         sentiment: SentimentReport = kwargs["sentiment"]
         market: MarketInterpretation = kwargs["market"]

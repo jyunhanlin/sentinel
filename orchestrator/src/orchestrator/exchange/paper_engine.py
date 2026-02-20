@@ -84,11 +84,18 @@ class PaperEngine:
         return list(self._positions)
 
     def open_position(self, proposal: TradeProposal, current_price: float) -> Position:
+        if proposal.stop_loss is None:
+            raise ValueError(
+                f"Cannot open position for {proposal.symbol}: stop_loss is required"
+            )
+
+        stop_loss = proposal.stop_loss
+
         quantity = self._position_sizer.calculate(
             equity=self.equity,
             risk_pct=proposal.position_size_risk_pct,
             entry_price=current_price,
-            stop_loss=proposal.stop_loss,
+            stop_loss=stop_loss,
         )
 
         open_fee = quantity * current_price * self._taker_fee_rate
@@ -101,7 +108,7 @@ class PaperEngine:
             side=proposal.side,
             entry_price=current_price,
             quantity=quantity,
-            stop_loss=proposal.stop_loss,
+            stop_loss=stop_loss,
             take_profit=proposal.take_profit,
             opened_at=datetime.now(UTC),
             risk_pct=proposal.position_size_risk_pct,

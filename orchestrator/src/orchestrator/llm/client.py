@@ -32,7 +32,7 @@ class LLMClient:
 
     async def call(
         self,
-        messages: list[dict],
+        messages: list[dict[str, str]],
         *,
         model: str | None = None,
         temperature: float | None = None,
@@ -50,13 +50,14 @@ class LLMClient:
         )
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
-        content = response.choices[0].message.content
+        content = response.choices[0].message.content or ""
+        usage = response.usage
 
         result = LLMCallResult(
             content=content,
             model=effective_model,
-            input_tokens=response.usage.prompt_tokens,
-            output_tokens=response.usage.completion_tokens,
+            input_tokens=usage.prompt_tokens if usage else 0,
+            output_tokens=usage.completion_tokens if usage else 0,
             latency_ms=elapsed_ms,
         )
 

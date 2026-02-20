@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -13,7 +14,7 @@ class MarketSnapshot(BaseModel, frozen=True):
     current_price: float
     volume_24h: float
     funding_rate: float
-    ohlcv: list[list]
+    ohlcv: list[list[float]]
 
 
 class DataFetcher:
@@ -41,7 +42,7 @@ class DataFetcher:
 
     async def _parallel_fetch(
         self, symbol: str, timeframe: str, limit: int
-    ) -> tuple[list[list], float, dict]:
+    ) -> tuple[list[list[float]], float, dict[str, Any]]:
         ohlcv_task = self._client.fetch_ohlcv(symbol, timeframe, limit=limit)
         funding_task = self._client.fetch_funding_rate(symbol)
         ticker_task = self._client.fetch_ticker(symbol)

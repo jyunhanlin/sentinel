@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import yaml
 from pydantic import BaseModel
 
@@ -35,7 +37,7 @@ class ExpectedOutputs(BaseModel, frozen=True):
 class EvalCase(BaseModel, frozen=True):
     id: str
     description: str
-    snapshot: dict
+    snapshot: dict[str, Any]
     expected: ExpectedOutputs
 
 

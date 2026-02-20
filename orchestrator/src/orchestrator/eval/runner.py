@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from pydantic import BaseModel
@@ -12,6 +12,7 @@ from orchestrator.exchange.data_fetcher import MarketSnapshot
 
 if TYPE_CHECKING:
     from orchestrator.agents.base import BaseAgent
+    from orchestrator.models import MarketInterpretation, SentimentReport, TradeProposal
 
 logger = structlog.get_logger(__name__)
 
@@ -37,9 +38,9 @@ class EvalRunner:
     def __init__(
         self,
         *,
-        sentiment_agent: BaseAgent,
-        market_agent: BaseAgent,
-        proposer_agent: BaseAgent,
+        sentiment_agent: BaseAgent[SentimentReport],
+        market_agent: BaseAgent[MarketInterpretation],
+        proposer_agent: BaseAgent[TradeProposal],
     ) -> None:
         self._sentiment_agent = sentiment_agent
         self._market_agent = market_agent
@@ -109,7 +110,7 @@ class EvalRunner:
 
         return CaseResult(case_id=case.id, passed=passed, scores=all_scores)
 
-    def _build_snapshot(self, raw: dict) -> MarketSnapshot:
+    def _build_snapshot(self, raw: dict[str, Any]) -> MarketSnapshot:
         return MarketSnapshot(
             symbol=raw.get("symbol", "BTC/USDT:USDT"),
             timeframe=raw.get("timeframe", "4h"),

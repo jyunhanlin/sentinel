@@ -10,7 +10,9 @@ from pydantic import BaseModel
 from orchestrator.models import TradeProposal
 
 if TYPE_CHECKING:
+    from orchestrator.exchange.client import ExchangeClient
     from orchestrator.exchange.paper_engine import PaperEngine
+    from orchestrator.risk.position_sizer import PositionSizer
 
 logger = structlog.get_logger(__name__)
 
@@ -96,9 +98,9 @@ class LiveExecutor(OrderExecutor):
     def __init__(
         self,
         *,
-        exchange_client,  # ExchangeClient
-        position_sizer,  # PositionSizer
-        paper_engine,  # PaperEngine (for equity)
+        exchange_client: ExchangeClient,
+        position_sizer: PositionSizer,
+        paper_engine: PaperEngine,
         price_deviation_threshold: float = 0.01,
     ) -> None:
         self._exchange = exchange_client
@@ -124,6 +126,11 @@ class LiveExecutor(OrderExecutor):
     async def execute_entry(
         self, proposal: TradeProposal, current_price: float
     ) -> ExecutionResult:
+        if proposal.stop_loss is None:
+            raise ValueError(
+                f"Cannot execute {proposal.symbol}: stop_loss is required"
+            )
+
         quantity = self._position_sizer.calculate(
             equity=self._paper_engine.equity,
             risk_pct=proposal.position_size_risk_pct,

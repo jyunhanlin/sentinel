@@ -9,7 +9,7 @@ from orchestrator.models import SentimentReport
 class SentimentAgent(BaseAgent[SentimentReport]):
     output_model = SentimentReport
 
-    def _build_messages(self, **kwargs) -> list[dict]:
+    def _build_messages(self, **kwargs) -> list[dict[str, str]]:
         snapshot: MarketSnapshot = kwargs["snapshot"]
 
         system_prompt = (

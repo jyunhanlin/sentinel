@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-def summarize_ohlcv(ohlcv: list[list], *, max_candles: int = 10) -> str:
+def summarize_ohlcv(ohlcv: list[list[float]], *, max_candles: int = 10) -> str:
     if not ohlcv:
         return "No OHLCV data available"
 

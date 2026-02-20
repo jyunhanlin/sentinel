@@ -15,7 +15,7 @@ class AgentResult[T: BaseModel](BaseModel):
     output: T
     degraded: bool = False
     llm_calls: list[LLMCallResult] = []
-    messages: list[dict] = []
+    messages: list[dict[str, str]] = []
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -75,14 +75,16 @@ class BaseAgent[T: BaseModel](ABC):
         )
 
     @abstractmethod
-    def _build_messages(self, **kwargs) -> list[dict]:
+    def _build_messages(self, **kwargs) -> list[dict[str, str]]:
         ...
 
     @abstractmethod
     def _get_default_output(self) -> T:
         ...
 
-    def _build_retry_messages(self, original_messages: list[dict], error: str) -> list[dict]:
+    def _build_retry_messages(
+        self, original_messages: list[dict[str, str]], error: str
+    ) -> list[dict[str, str]]:
         return original_messages + [
             {"role": "assistant", "content": "(invalid output)"},
             {
