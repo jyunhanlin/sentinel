@@ -10,7 +10,7 @@ def test_settings_loads_defaults():
         anthropic_api_key="test-key",
     )
     assert settings.exchange_id == "binance"
-    assert settings.pipeline_interval_minutes == 15
+    assert settings.pipeline_interval_minutes == 720
     assert settings.max_single_risk_pct == 2.0
     assert settings.database_url == "sqlite:///data/sentinel.db"
 
@@ -51,7 +51,7 @@ def test_settings_llm_backend_defaults():
         telegram_bot_token="test",
         telegram_admin_chat_ids=[123],
     )
-    assert settings.llm_backend == "api"
+    assert settings.llm_backend == "cli"
     assert settings.claude_cli_path == "claude"
     assert settings.claude_cli_timeout == 120
 

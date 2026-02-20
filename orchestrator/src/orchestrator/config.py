@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     llm_max_retries: int = 1
 
     # LLM Backend
-    llm_backend: str = "api"                         # "api" | "cli"
+    llm_backend: str = "cli"                         # "api" | "cli"
     claude_cli_path: str = "claude"
     claude_cli_timeout: int = 120                    # seconds
 
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///data/sentinel.db"
 
     # Pipeline
-    pipeline_interval_minutes: int = 15
+    pipeline_interval_minutes: int = 720
     pipeline_symbols: list[str] = Field(default=["BTC/USDT:USDT", "ETH/USDT:USDT"])
 
     # Risk
