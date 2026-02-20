@@ -54,48 +54,36 @@ def is_admin(chat_id: int, *, admin_ids: list[int]) -> bool:
 
 
 class SentinelBot:
-    def __init__(self, token: str, admin_chat_ids: list[int], *, premium_model: str = "") -> None:
+    def __init__(
+        self,
+        token: str,
+        admin_chat_ids: list[int],
+        *,
+        premium_model: str = "",
+        scheduler: PipelineScheduler | None = None,
+        paper_engine: PaperEngine | None = None,
+        trade_repo: PaperTradeRepository | None = None,
+        proposal_repo: TradeProposalRepository | None = None,
+        snapshot_repo: AccountSnapshotRepository | None = None,
+        eval_runner: EvalRunner | None = None,
+        approval_manager: ApprovalManager | None = None,
+        executor: OrderExecutor | None = None,
+        data_fetcher: DataFetcher | None = None,
+    ) -> None:
         self.token = token
         self.admin_chat_ids = admin_chat_ids
         self._premium_model = premium_model
         self._app: Application | None = None
-        self._scheduler: PipelineScheduler | None = None
-        self._latest_results: dict[str, object] = {}  # symbol → PipelineResult
-        self._paper_engine: PaperEngine | None = None
-        self._trade_repo: PaperTradeRepository | None = None
-        self._proposal_repo: TradeProposalRepository | None = None
-        self._snapshot_repo: AccountSnapshotRepository | None = None
-        self._eval_runner: EvalRunner | None = None
-        self._approval_manager: ApprovalManager | None = None
-        self._executor: OrderExecutor | None = None
-        self._data_fetcher: DataFetcher | None = None
-
-    def set_approval_manager(self, mgr: ApprovalManager) -> None:
-        self._approval_manager = mgr
-
-    def set_executor(self, executor: OrderExecutor) -> None:
-        self._executor = executor
-
-    def set_data_fetcher(self, fetcher: DataFetcher) -> None:
-        self._data_fetcher = fetcher
-
-    def set_scheduler(self, scheduler: PipelineScheduler) -> None:
         self._scheduler = scheduler
-
-    def set_paper_engine(self, engine: PaperEngine) -> None:
-        self._paper_engine = engine
-
-    def set_trade_repo(self, repo: PaperTradeRepository) -> None:
-        self._trade_repo = repo
-
-    def set_proposal_repo(self, repo: TradeProposalRepository) -> None:
-        self._proposal_repo = repo
-
-    def set_snapshot_repo(self, repo: AccountSnapshotRepository) -> None:
-        self._snapshot_repo = repo
-
-    def set_eval_runner(self, runner: EvalRunner) -> None:
-        self._eval_runner = runner
+        self._latest_results: dict[str, object] = {}  # symbol → PipelineResult
+        self._paper_engine = paper_engine
+        self._trade_repo = trade_repo
+        self._proposal_repo = proposal_repo
+        self._snapshot_repo = snapshot_repo
+        self._eval_runner = eval_runner
+        self._approval_manager = approval_manager
+        self._executor = executor
+        self._data_fetcher = data_fetcher
 
     def build(self) -> Application:
         self._app = Application.builder().token(self.token).build()

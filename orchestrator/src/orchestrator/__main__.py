@@ -165,28 +165,28 @@ def create_app_components(
         approval_manager=approval_manager,
     )
 
-    # Telegram
-    bot = SentinelBot(
-        token=telegram_bot_token,
-        admin_chat_ids=telegram_admin_chat_ids,
-        premium_model=llm_model_premium,
-    )
-    bot.set_scheduler(scheduler)
-    bot.set_paper_engine(paper_engine)
-    bot.set_trade_repo(paper_trade_repo)
-    bot.set_proposal_repo(proposal_repo)
-    bot.set_snapshot_repo(account_snapshot_repo)
-    bot.set_approval_manager(approval_manager)
-    bot.set_executor(executor)
-    bot.set_data_fetcher(data_fetcher)
-
     # Eval
     eval_runner = EvalRunner(
         sentiment_agent=sentiment_agent,
         market_agent=market_agent,
         proposer_agent=proposer_agent,
     )
-    bot.set_eval_runner(eval_runner)
+
+    # Telegram
+    bot = SentinelBot(
+        token=telegram_bot_token,
+        admin_chat_ids=telegram_admin_chat_ids,
+        premium_model=llm_model_premium,
+        scheduler=scheduler,
+        paper_engine=paper_engine,
+        trade_repo=paper_trade_repo,
+        proposal_repo=proposal_repo,
+        snapshot_repo=account_snapshot_repo,
+        approval_manager=approval_manager,
+        executor=executor,
+        data_fetcher=data_fetcher,
+        eval_runner=eval_runner,
+    )
 
     return {
         "bot": bot,

@@ -402,8 +402,6 @@ class TestApprovalCallback:
         from orchestrator.approval.manager import PendingApproval
         from orchestrator.execution.executor import ExecutionResult
 
-        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
-
         now = datetime.now(UTC)
         approval = PendingApproval(
             approval_id="a-001",
@@ -426,7 +424,6 @@ class TestApprovalCallback:
         )
         approval_mgr = MagicMock()
         approval_mgr.approve.return_value = approval
-        bot.set_approval_manager(approval_mgr)
 
         executor = AsyncMock()
         executor.execute_entry.return_value = ExecutionResult(
@@ -439,12 +436,16 @@ class TestApprovalCallback:
             mode="paper",
         )
         executor.place_sl_tp.return_value = []
-        bot.set_executor(executor)
 
-        # Mock data fetcher for price re-check
         data_fetcher = AsyncMock()
         data_fetcher.fetch_current_price.return_value = 95250.0
-        bot.set_data_fetcher(data_fetcher)
+
+        bot = SentinelBot(
+            token="test-token", admin_chat_ids=[123],
+            approval_manager=approval_mgr,
+            executor=executor,
+            data_fetcher=data_fetcher,
+        )
 
         # Simulate callback
         query = MagicMock()
@@ -469,8 +470,6 @@ class TestApprovalCallback:
 
         from orchestrator.approval.manager import PendingApproval
 
-        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
-
         now = datetime.now(UTC)
         approval = PendingApproval(
             approval_id="a-002",
@@ -493,7 +492,10 @@ class TestApprovalCallback:
         )
         approval_mgr = MagicMock()
         approval_mgr.reject.return_value = approval
-        bot.set_approval_manager(approval_mgr)
+        bot = SentinelBot(
+            token="test-token", admin_chat_ids=[123],
+            approval_manager=approval_mgr,
+        )
 
         query = MagicMock()
         query.data = "reject:a-002"
@@ -513,10 +515,11 @@ class TestApprovalCallback:
 
 
 class TestBotStatusFromDB:
-    def test_bot_has_proposal_repo_setter(self):
+    def test_bot_accepts_proposal_repo(self):
         """Verify the bot accepts a proposal_repo for DB-backed status."""
-        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
-        assert hasattr(bot, "set_proposal_repo")
+        mock_repo = MagicMock()
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123], proposal_repo=mock_repo)
+        assert bot._proposal_repo is mock_repo
 
     def test_format_status_from_records(self):
         """format_status_from_records should render DB proposal records."""
@@ -614,10 +617,9 @@ class TestStatusHandler:
 
     @pytest.mark.asyncio
     async def test_status_empty_with_proposal_repo(self):
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_repo = MagicMock()
         mock_repo.get_recent.return_value = []
-        bot.set_proposal_repo(mock_repo)
+        bot = SentinelBot(token="t", admin_chat_ids=[123], proposal_repo=mock_repo)
         update = _make_update(123)
         await bot._status_handler(update, _make_context())
         update.message.reply_text.assert_called_once()
@@ -668,22 +670,20 @@ class TestRunHandler:
 
     @pytest.mark.asyncio
     async def test_run_all_symbols(self):
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_scheduler = MagicMock()
         mock_scheduler.symbols = ["BTC/USDT:USDT"]
         mock_scheduler.run_once = AsyncMock(return_value=[])
-        bot.set_scheduler(mock_scheduler)
+        bot = SentinelBot(token="t", admin_chat_ids=[123], scheduler=mock_scheduler)
         update = _make_update(123)
         await bot._run_handler(update, _make_context())
         mock_scheduler.run_once.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_with_model_alias(self):
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_scheduler = MagicMock()
         mock_scheduler.symbols = ["BTC/USDT:USDT"]
         mock_scheduler.run_once = AsyncMock(return_value=[])
-        bot.set_scheduler(mock_scheduler)
+        bot = SentinelBot(token="t", admin_chat_ids=[123], scheduler=mock_scheduler)
         update = _make_update(123)
         await bot._run_handler(update, _make_context(args=["opus"]))
         call_kwargs = mock_scheduler.run_once.call_args[1]
@@ -701,10 +701,9 @@ class TestHistoryHandler:
 
     @pytest.mark.asyncio
     async def test_history_with_trades(self):
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_repo = MagicMock()
         mock_repo.get_recent_closed.return_value = []
-        bot.set_trade_repo(mock_repo)
+        bot = SentinelBot(token="t", admin_chat_ids=[123], trade_repo=mock_repo)
         update = _make_update(123)
         await bot._history_handler(update, _make_context())
         update.message.reply_text.assert_called_once()
@@ -721,9 +720,8 @@ class TestResumeHandler:
 
     @pytest.mark.asyncio
     async def test_resume_unpauses(self):
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_engine = MagicMock()
-        bot.set_paper_engine(mock_engine)
+        bot = SentinelBot(token="t", admin_chat_ids=[123], paper_engine=mock_engine)
         update = _make_update(123)
         await bot._resume_handler(update, _make_context())
         mock_engine.set_paused.assert_called_once_with(False)
@@ -810,12 +808,11 @@ class TestPushWithApp:
 class TestRunHandlerAdvanced:
     @pytest.mark.asyncio
     async def test_run_with_symbol_arg(self):
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_scheduler = MagicMock()
         mock_scheduler.symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
         result = _make_pipeline_result()
         mock_scheduler.run_once = AsyncMock(return_value=[result])
-        bot.set_scheduler(mock_scheduler)
+        bot = SentinelBot(token="t", admin_chat_ids=[123], scheduler=mock_scheduler)
         update = _make_update(123)
         await bot._run_handler(update, _make_context(args=["BTC"]))
         call_kwargs = mock_scheduler.run_once.call_args[1]
@@ -823,10 +820,9 @@ class TestRunHandlerAdvanced:
 
     @pytest.mark.asyncio
     async def test_run_unknown_symbol(self):
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_scheduler = MagicMock()
         mock_scheduler.symbols = ["BTC/USDT:USDT"]
-        bot.set_scheduler(mock_scheduler)
+        bot = SentinelBot(token="t", admin_chat_ids=[123], scheduler=mock_scheduler)
         update = _make_update(123)
         await bot._run_handler(update, _make_context(args=["XYZ"]))
         text = update.message.reply_text.call_args[0][0]
@@ -834,14 +830,14 @@ class TestRunHandlerAdvanced:
 
     @pytest.mark.asyncio
     async def test_run_with_premium_model_setting(self):
-        bot = SentinelBot(
-            token="t", admin_chat_ids=[123],
-            premium_model="anthropic/claude-opus-4-6",
-        )
         mock_scheduler = MagicMock()
         mock_scheduler.symbols = ["BTC/USDT:USDT"]
         mock_scheduler.run_once = AsyncMock(return_value=[])
-        bot.set_scheduler(mock_scheduler)
+        bot = SentinelBot(
+            token="t", admin_chat_ids=[123],
+            premium_model="anthropic/claude-opus-4-6",
+            scheduler=mock_scheduler,
+        )
         update = _make_update(123)
         await bot._run_handler(update, _make_context())
         call_kwargs = mock_scheduler.run_once.call_args[1]
@@ -851,7 +847,6 @@ class TestRunHandlerAdvanced:
 class TestCoinHandlerDB:
     @pytest.mark.asyncio
     async def test_coin_db_fallback(self):
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_repo = MagicMock()
         record = TradeProposalRecord(
             proposal_id="p-1", run_id="r-1",
@@ -859,7 +854,7 @@ class TestCoinHandlerDB:
             risk_check_result="approved",
         )
         mock_repo.get_recent.return_value = [record]
-        bot.set_proposal_repo(mock_repo)
+        bot = SentinelBot(token="t", admin_chat_ids=[123], proposal_repo=mock_repo)
         update = _make_update(123)
         await bot._coin_handler(update, _make_context(args=["BTC"]))
         update.message.reply_text.assert_called()
@@ -870,7 +865,6 @@ class TestEvalHandlerWithRunner:
     async def test_eval_handler_runs(self):
         from orchestrator.eval.runner import CaseResult, EvalReport
 
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
         mock_runner = AsyncMock()
         mock_runner.run_default.return_value = EvalReport(
             dataset_name="golden_v1", total_cases=1,
@@ -879,7 +873,7 @@ class TestEvalHandlerWithRunner:
                 CaseResult(case_id="test", passed=True, scores=[]),
             ],
         )
-        bot.set_eval_runner(mock_runner)
+        bot = SentinelBot(token="t", admin_chat_ids=[123], eval_runner=mock_runner)
         update = _make_update(123)
         await bot._eval_handler(update, _make_context())
         # Should have 2 calls: "Running evaluation..." and the report
@@ -890,7 +884,6 @@ class TestPerfHandler:
     @pytest.mark.asyncio
     async def test_perf_handler_returns_stats(self):
         """The /perf command should show performance stats."""
-        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
         mock_snapshot = MagicMock()
         mock_snapshot.total_pnl = 500.0
         mock_snapshot.win_rate = 0.6
@@ -902,7 +895,7 @@ class TestPerfHandler:
 
         mock_snapshot_repo = MagicMock()
         mock_snapshot_repo.get_latest.return_value = mock_snapshot
-        bot.set_snapshot_repo(mock_snapshot_repo)
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123], snapshot_repo=mock_snapshot_repo)
 
         update = MagicMock()
         update.effective_chat.id = 123
@@ -917,10 +910,9 @@ class TestPerfHandler:
     @pytest.mark.asyncio
     async def test_perf_handler_no_data(self):
         """The /perf command should say no data when no snapshots exist."""
-        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
         mock_snapshot_repo = MagicMock()
         mock_snapshot_repo.get_latest.return_value = None
-        bot.set_snapshot_repo(mock_snapshot_repo)
+        bot = SentinelBot(token="test-token", admin_chat_ids=[123], snapshot_repo=mock_snapshot_repo)
 
         update = MagicMock()
         update.effective_chat.id = 123
