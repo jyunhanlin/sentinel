@@ -17,6 +17,7 @@ from orchestrator.exchange.client import ExchangeClient
 from orchestrator.exchange.data_fetcher import DataFetcher
 from orchestrator.exchange.paper_engine import PaperEngine
 from orchestrator.execution.executor import LiveExecutor, PaperExecutor
+from orchestrator.llm.backend import LiteLLMBackend
 from orchestrator.llm.client import LLMClient
 from orchestrator.logging import setup_logging
 from orchestrator.pipeline.runner import PipelineRunner
@@ -80,9 +81,10 @@ def create_app_components(
     session = Session(db_engine)
 
     # LLM
+    backend = LiteLLMBackend(api_key=anthropic_api_key)
     llm_client = LLMClient(
+        backend=backend,
         model=llm_model,
-        api_key=anthropic_api_key,
         temperature=llm_temperature,
         max_tokens=llm_max_tokens,
     )
