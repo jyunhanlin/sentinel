@@ -15,12 +15,17 @@ class Settings(BaseSettings):
     exchange_api_secret: str = ""
 
     # LLM
-    anthropic_api_key: str
+    anthropic_api_key: str = ""
     llm_model: str = "anthropic/claude-sonnet-4-6"
     llm_model_premium: str = "anthropic/claude-opus-4-6"
     llm_temperature: float = 0.2
     llm_max_tokens: int = 2000
     llm_max_retries: int = 1
+
+    # LLM Backend
+    llm_backend: str = "api"                         # "api" | "cli"
+    claude_cli_path: str = "claude"
+    claude_cli_timeout: int = 120                    # seconds
 
     # Database
     database_url: str = "sqlite:///data/sentinel.db"

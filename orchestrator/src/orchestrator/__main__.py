@@ -17,7 +17,7 @@ from orchestrator.exchange.client import ExchangeClient
 from orchestrator.exchange.data_fetcher import DataFetcher
 from orchestrator.exchange.paper_engine import PaperEngine
 from orchestrator.execution.executor import LiveExecutor, PaperExecutor
-from orchestrator.llm.backend import LiteLLMBackend
+from orchestrator.llm.backend import ClaudeCLIBackend, LiteLLMBackend
 from orchestrator.llm.client import LLMClient
 from orchestrator.logging import setup_logging
 from orchestrator.pipeline.runner import PipelineRunner
@@ -53,7 +53,7 @@ def create_app_components(
     telegram_admin_chat_ids: list[int],
     exchange_id: str,
     database_url: str,
-    anthropic_api_key: str,
+    anthropic_api_key: str = "",
     llm_model: str = "anthropic/claude-sonnet-4-6",
     llm_model_premium: str = "anthropic/claude-opus-4-6",
     llm_temperature: float = 0.2,
@@ -70,6 +70,10 @@ def create_app_components(
     paper_initial_equity: float = 10000.0,
     paper_taker_fee_rate: float = 0.0005,
     paper_maker_fee_rate: float = 0.0002,
+    # LLM Backend
+    llm_backend: str = "api",
+    claude_cli_path: str = "claude",
+    claude_cli_timeout: int = 120,
     # Semi-auto Trading
     trading_mode: str = "paper",
     approval_timeout_minutes: int = 15,
@@ -81,7 +85,11 @@ def create_app_components(
     session = Session(db_engine)
 
     # LLM
-    backend = LiteLLMBackend(api_key=anthropic_api_key)
+    if llm_backend == "cli":
+        backend = ClaudeCLIBackend(cli_path=claude_cli_path, timeout=claude_cli_timeout)
+    else:
+        backend = LiteLLMBackend(api_key=anthropic_api_key)
+
     llm_client = LLMClient(
         backend=backend,
         model=llm_model,
@@ -213,6 +221,9 @@ def _build_components(settings: Settings) -> dict[str, Any]:
         exchange_id=settings.exchange_id,
         database_url=settings.database_url,
         anthropic_api_key=settings.anthropic_api_key,
+        llm_backend=settings.llm_backend,
+        claude_cli_path=settings.claude_cli_path,
+        claude_cli_timeout=settings.claude_cli_timeout,
         llm_model=settings.llm_model,
         llm_model_premium=settings.llm_model_premium,
         llm_temperature=settings.llm_temperature,

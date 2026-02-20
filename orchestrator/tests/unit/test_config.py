@@ -46,6 +46,27 @@ def test_settings_semi_auto_defaults():
     assert settings.price_deviation_threshold == 0.01
 
 
+def test_settings_llm_backend_defaults():
+    settings = Settings(
+        telegram_bot_token="test",
+        telegram_admin_chat_ids=[123],
+    )
+    assert settings.llm_backend == "api"
+    assert settings.claude_cli_path == "claude"
+    assert settings.claude_cli_timeout == 120
+
+
+def test_settings_api_key_optional_for_cli():
+    """anthropic_api_key should default to empty string for CLI mode."""
+    settings = Settings(
+        telegram_bot_token="test",
+        telegram_admin_chat_ids=[123],
+        llm_backend="cli",
+    )
+    assert settings.anthropic_api_key == ""
+    assert settings.llm_backend == "cli"
+
+
 def test_settings_paper_trading_defaults(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test")
     monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_IDS", "[123]")
