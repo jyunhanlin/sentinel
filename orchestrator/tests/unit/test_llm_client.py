@@ -1,99 +1,101 @@
-from unittest.mock import AsyncMock, patch
+# orchestrator/tests/unit/test_llm_client.py
+from __future__ import annotations
+
+from unittest.mock import AsyncMock
 
 import pytest
 
+from orchestrator.llm.backend import LLMBackend
 from orchestrator.llm.client import LLMCallResult, LLMClient
+
+
+def _make_backend(
+    content: str = "response",
+    input_tokens: int = 50,
+    output_tokens: int = 25,
+) -> LLMBackend:
+    """Create a mock LLMBackend that returns a fixed LLMCallResult."""
+    backend = AsyncMock(spec=LLMBackend)
+    backend.complete.return_value = LLMCallResult(
+        content=content,
+        model="test-model",
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        latency_ms=10,
+    )
+    return backend
 
 
 class TestLLMClient:
     def test_create_client(self):
-        client = LLMClient(model="anthropic/claude-sonnet-4-6", api_key="test-key")
+        backend = AsyncMock(spec=LLMBackend)
+        client = LLMClient(backend=backend, model="anthropic/claude-sonnet-4-6")
         assert client.model == "anthropic/claude-sonnet-4-6"
 
     @pytest.mark.asyncio
     async def test_call_returns_result(self):
-        client = LLMClient(model="anthropic/claude-sonnet-4-6", api_key="test-key")
+        backend = _make_backend(
+            content='{"sentiment_score": 72}',
+            input_tokens=100,
+            output_tokens=50,
+        )
+        client = LLMClient(backend=backend, model="anthropic/claude-sonnet-4-6")
 
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock()]
-        mock_response.choices[0].message.content = '{"sentiment_score": 72}'
-        mock_response.usage.prompt_tokens = 100
-        mock_response.usage.completion_tokens = 50
-
-        with patch("orchestrator.llm.client.acompletion", return_value=mock_response):
-            result = await client.call(
-                messages=[{"role": "user", "content": "analyze"}],
-            )
+        result = await client.call(messages=[{"role": "user", "content": "analyze"}])
 
         assert isinstance(result, LLMCallResult)
         assert result.content == '{"sentiment_score": 72}'
         assert result.input_tokens == 100
         assert result.output_tokens == 50
-        assert result.latency_ms >= 0
 
     @pytest.mark.asyncio
-    async def test_call_with_custom_params(self):
+    async def test_call_delegates_params_to_backend(self):
+        backend = _make_backend()
         client = LLMClient(
+            backend=backend,
             model="anthropic/claude-sonnet-4-6",
-            api_key="test-key",
             temperature=0.5,
             max_tokens=500,
         )
 
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock()]
-        mock_response.choices[0].message.content = "response"
-        mock_response.usage.prompt_tokens = 50
-        mock_response.usage.completion_tokens = 25
+        await client.call(messages=[{"role": "user", "content": "test"}])
 
-        with patch("orchestrator.llm.client.acompletion", return_value=mock_response) as mock_call:
-            await client.call(messages=[{"role": "user", "content": "test"}])
-            mock_call.assert_called_once()
-            call_kwargs = mock_call.call_args[1]
-            assert call_kwargs["temperature"] == 0.5
-            assert call_kwargs["max_tokens"] == 500
-
+        backend.complete.assert_called_once_with(
+            [{"role": "user", "content": "test"}],
+            model="anthropic/claude-sonnet-4-6",
+            temperature=0.5,
+            max_tokens=500,
+        )
 
     @pytest.mark.asyncio
     async def test_call_with_zero_temperature(self):
+        backend = _make_backend()
         client = LLMClient(
+            backend=backend,
             model="anthropic/claude-sonnet-4-6",
-            api_key="test-key",
             temperature=0.5,
         )
 
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock()]
-        mock_response.choices[0].message.content = "response"
-        mock_response.usage.prompt_tokens = 50
-        mock_response.usage.completion_tokens = 25
+        await client.call(
+            messages=[{"role": "user", "content": "test"}],
+            temperature=0.0,
+        )
 
-        with patch("orchestrator.llm.client.acompletion", return_value=mock_response) as mock_call:
-            await client.call(
-                messages=[{"role": "user", "content": "test"}],
-                temperature=0.0,
-            )
-            call_kwargs = mock_call.call_args[1]
-            assert call_kwargs["temperature"] == 0.0  # must not fallback to 0.5
+        call_kwargs = backend.complete.call_args
+        assert call_kwargs.kwargs["temperature"] == 0.0
 
     @pytest.mark.asyncio
     async def test_call_with_model_override(self):
-        client = LLMClient(model="anthropic/claude-sonnet-4-6", api_key="test-key")
+        backend = _make_backend()
+        client = LLMClient(backend=backend, model="anthropic/claude-sonnet-4-6")
 
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock()]
-        mock_response.choices[0].message.content = "response"
-        mock_response.usage.prompt_tokens = 50
-        mock_response.usage.completion_tokens = 25
+        await client.call(
+            messages=[{"role": "user", "content": "test"}],
+            model="anthropic/claude-opus-4-6",
+        )
 
-        with patch("orchestrator.llm.client.acompletion", return_value=mock_response) as mock_call:
-            result = await client.call(
-                messages=[{"role": "user", "content": "test"}],
-                model="anthropic/claude-opus-4-6",
-            )
-            call_kwargs = mock_call.call_args[1]
-            assert call_kwargs["model"] == "anthropic/claude-opus-4-6"
-            assert result.model == "anthropic/claude-opus-4-6"
+        call_kwargs = backend.complete.call_args
+        assert call_kwargs.kwargs["model"] == "anthropic/claude-opus-4-6"
 
 
 class TestLLMCallResult:
