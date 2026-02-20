@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 import re
 import time
 from abc import ABC, abstractmethod
 
+import structlog
 from litellm import acompletion
 
 from orchestrator.llm.client import LLMCallResult
+
+logger = structlog.get_logger(__name__)
 
 
 class LLMBackend(ABC):
@@ -98,3 +104,97 @@ def _map_model_name(model: str) -> str:
     if match:
         return match.group(1)
     return model
+
+
+# ---------------------------------------------------------------------------
+# Claude CLI backend
+# ---------------------------------------------------------------------------
+
+
+class ClaudeCLIBackend(LLMBackend):
+    """Claude CLI backend via subprocess."""
+
+    def __init__(
+        self,
+        cli_path: str = "claude",
+        timeout: int = 120,
+    ) -> None:
+        self._cli_path = cli_path
+        self._timeout = timeout
+
+    async def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> LLMCallResult:
+        system_prompt, remaining = _extract_system_prompt(messages)
+        prompt_text = _flatten_messages(remaining)
+        cli_model = _map_model_name(model)
+
+        cmd = [
+            self._cli_path,
+            "-p",
+            "--output-format",
+            "json",
+            "--model",
+            cli_model,
+        ]
+        if system_prompt:
+            cmd.extend(["--system-prompt", system_prompt])
+
+        # Remove CLAUDECODE env var to avoid nested session error
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
+        start = time.monotonic()
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(input=prompt_text.encode()),
+                timeout=self._timeout,
+            )
+        except TimeoutError:
+            process.kill()
+            raise
+
+        if process.returncode != 0:
+            error_msg = stderr.decode().strip()
+            logger.error(
+                "claude_cli_failed",
+                returncode=process.returncode,
+                stderr=error_msg,
+            )
+            raise RuntimeError(
+                f"Claude CLI failed (exit {process.returncode}): {error_msg}"
+            )
+
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+
+        envelope = json.loads(stdout.decode())
+        content = envelope.get("result", "")
+
+        logger.info(
+            "claude_cli_complete",
+            model=model,
+            cli_model=cli_model,
+            duration_ms=envelope.get("duration_ms", elapsed_ms),
+            cost_usd=envelope.get("cost_usd", 0),
+        )
+
+        return LLMCallResult(
+            content=content,
+            model=model,
+            input_tokens=0,
+            output_tokens=0,
+            latency_ms=elapsed_ms,
+        )
