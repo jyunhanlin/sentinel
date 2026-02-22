@@ -28,6 +28,9 @@ class Position(BaseModel, frozen=True):
     take_profit: list[float]
     opened_at: datetime
     risk_pct: float
+    leverage: int = 1
+    margin: float = 0.0
+    liquidation_price: float = 0.0
 
 
 class CloseResult(BaseModel, frozen=True):

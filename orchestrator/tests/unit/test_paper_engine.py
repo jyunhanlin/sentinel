@@ -1,8 +1,9 @@
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
 
-from orchestrator.exchange.paper_engine import PaperEngine
+from orchestrator.exchange.paper_engine import PaperEngine, Position
 from orchestrator.models import EntryOrder, Side, TradeProposal
 from orchestrator.risk.position_sizer import RiskPercentSizer
 from orchestrator.stats.calculator import StatsCalculator
@@ -152,3 +153,24 @@ class TestPaperEngineStats:
         assert "total_pnl" in call_kwargs
         assert "win_rate" in call_kwargs
         assert "total_trades" in call_kwargs
+
+
+def test_position_has_leverage_fields():
+    pos = Position(
+        trade_id="t1",
+        proposal_id="p1",
+        symbol="BTC/USDT:USDT",
+        side=Side.LONG,
+        entry_price=68000.0,
+        quantity=0.1,
+        stop_loss=67000.0,
+        take_profit=[70000.0],
+        opened_at=datetime.now(UTC),
+        risk_pct=1.0,
+        leverage=10,
+        margin=680.0,
+        liquidation_price=61880.0,
+    )
+    assert pos.leverage == 10
+    assert pos.margin == 680.0
+    assert pos.liquidation_price == 61880.0
