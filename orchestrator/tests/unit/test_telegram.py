@@ -759,11 +759,61 @@ class TestHistoryHandler:
     @pytest.mark.asyncio
     async def test_history_with_trades(self):
         mock_repo = MagicMock()
-        mock_repo.get_recent_closed.return_value = []
+        mock_repo.get_closed_paginated.return_value = ([], 0)
         bot = SentinelBot(token="t", admin_chat_ids=[123], trade_repo=mock_repo)
         update = _make_update(123)
         await bot._history_handler(update, _make_context())
         update.message.reply_text.assert_called_once()
+
+
+class TestHistoryPagination:
+    @pytest.mark.asyncio
+    async def test_history_shows_paginated_with_buttons(self):
+        """The /history command should show paginated trades with nav buttons."""
+        trade = MagicMock(
+            symbol="BTC/USDT:USDT", side="long", leverage=10,
+            entry_price=68000.0, exit_price=67000.0,
+            pnl=-100.0, fees=3.4, opened_at=datetime.now(UTC),
+            closed_at=datetime.now(UTC), close_reason="sl", margin=680.0,
+        )
+        mock_repo = MagicMock()
+        mock_repo.get_closed_paginated.return_value = ([trade], 8)  # 8 total = 2 pages
+
+        bot = SentinelBot(token="t", admin_chat_ids=[123], trade_repo=mock_repo)
+        update = _make_update(123)
+        await bot._history_handler(update, _make_context())
+
+        # Should call get_closed_paginated instead of get_recent_closed
+        mock_repo.get_closed_paginated.assert_called_once()
+        # Should have reply with pagination buttons
+        call_kwargs = update.message.reply_text.call_args
+        markup = call_kwargs.kwargs.get("reply_markup") or call_kwargs[1].get("reply_markup")
+        assert markup is not None
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        assert any("history:page:" in d for d in all_data)
+
+    @pytest.mark.asyncio
+    async def test_history_single_page_no_nav(self):
+        """Single page of results should have no Prev/Next buttons."""
+        mock_repo = MagicMock()
+        mock_repo.get_closed_paginated.return_value = ([], 0)
+
+        bot = SentinelBot(token="t", admin_chat_ids=[123], trade_repo=mock_repo)
+        update = _make_update(123)
+        await bot._history_handler(update, _make_context())
+
+        call_kwargs = update.message.reply_text.call_args
+        markup = call_kwargs.kwargs.get("reply_markup") or call_kwargs[1].get("reply_markup")
+        if markup:
+            all_data = [
+                btn.callback_data for row in markup.inline_keyboard for btn in row
+                if btn.callback_data and btn.callback_data.startswith("history:page:")
+            ]
+            # Page 1/1, no Prev or Next
+            assert len(all_data) == 0
 
 
 class TestResumeHandler:

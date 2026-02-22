@@ -476,8 +476,27 @@ class SentinelBot:
         if self._trade_repo is None:
             await self._reply(update, "Paper trading not configured.")
             return
-        trades = self._trade_repo.get_recent_closed(limit=10)
-        await self._reply(update, format_history(trades))
+
+        from orchestrator.telegram.formatters import format_history_paginated
+
+        page_size = 5
+        trades, total = self._trade_repo.get_closed_paginated(offset=0, limit=page_size)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        text = format_history_paginated(trades, page=1, total_pages=total_pages)
+
+        nav_buttons: list[InlineKeyboardButton] = []
+        nav_buttons.append(
+            InlineKeyboardButton(f"Page 1/{total_pages}", callback_data="cancel:0")
+        )
+        if total_pages > 1:
+            nav_buttons.append(
+                InlineKeyboardButton("Next", callback_data="history:page:2")
+            )
+
+        if update.message:
+            await update.message.reply_text(
+                text, reply_markup=InlineKeyboardMarkup([nav_buttons]),
+            )
 
     async def _resume_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
