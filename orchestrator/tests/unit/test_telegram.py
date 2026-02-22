@@ -398,12 +398,11 @@ class TestFormatExecutionResult:
 
 class TestApprovalCallback:
     @pytest.mark.asyncio
-    async def test_approve_callback_executes(self):
-        """Clicking Approve should execute the order and send confirmation."""
+    async def test_approve_callback_shows_leverage(self):
+        """Clicking Approve should show leverage selection (not execute immediately)."""
         from datetime import UTC, datetime, timedelta
 
         from orchestrator.approval.manager import PendingApproval
-        from orchestrator.execution.executor import ExecutionResult
 
         now = datetime.now(UTC)
         approval = PendingApproval(
@@ -426,28 +425,14 @@ class TestApprovalCallback:
             expires_at=now + timedelta(minutes=15),
         )
         approval_mgr = MagicMock()
-        approval_mgr.approve.return_value = approval
+        approval_mgr.get.return_value = approval
 
         executor = AsyncMock()
-        executor.execute_entry.return_value = ExecutionResult(
-            trade_id="t-001",
-            symbol="BTC/USDT:USDT",
-            side="long",
-            entry_price=95250.0,
-            quantity=0.075,
-            fees=3.57,
-            mode="paper",
-        )
-        executor.place_sl_tp.return_value = []
-
-        data_fetcher = AsyncMock()
-        data_fetcher.fetch_current_price.return_value = 95250.0
 
         bot = SentinelBot(
             token="test-token", admin_chat_ids=[123],
             approval_manager=approval_mgr,
             executor=executor,
-            data_fetcher=data_fetcher,
         )
 
         # Simulate callback
@@ -464,8 +449,17 @@ class TestApprovalCallback:
         context = MagicMock()
 
         await bot._callback_router(update, context)
-        executor.execute_entry.assert_called_once()
-        query.answer.assert_called()
+        # Should show leverage selection, NOT execute
+        executor.execute_entry.assert_not_called()
+        query.edit_message_text.assert_called_once()
+        # Verify leverage buttons in markup
+        markup = query.edit_message_text.call_args.kwargs.get("reply_markup")
+        assert markup is not None
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        assert any("confirm_leverage:" in d for d in all_data)
 
     @pytest.mark.asyncio
     async def test_reject_callback(self):
@@ -1072,3 +1066,200 @@ class TestLeverageFormatting:
         assert "Page 1/3" in text
         assert "10x" in text
         assert "ROE" in text
+
+
+class TestApproveWithLeverage:
+    def _make_bot(self, **kwargs):
+        defaults = dict(
+            token="test-token",
+            admin_chat_ids=[123],
+            approval_manager=MagicMock(),
+            executor=MagicMock(),
+            data_fetcher=MagicMock(),
+            paper_engine=MagicMock(),
+        )
+        defaults.update(kwargs)
+        return SentinelBot(**defaults)
+
+    def _make_callback_query(self, data: str):
+        query = MagicMock()
+        query.data = data
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        query.message = MagicMock()
+        query.message.message_id = 1
+        query.message.reply_markup = None
+        return query
+
+    @pytest.mark.asyncio
+    async def test_approve_shows_leverage_selection(self):
+        """When user clicks Approve, bot should show leverage options."""
+        bot = self._make_bot()
+        approval = MagicMock()
+        approval.proposal.symbol = "BTC/USDT:USDT"
+        approval.proposal.side.value = "long"
+        approval.proposal.stop_loss = 67000.0
+        approval.proposal.take_profit = [70000.0]
+        approval.proposal.position_size_risk_pct = 1.0
+        approval.snapshot_price = 68000.0
+        bot._approval_manager.get.return_value = approval
+
+        query = self._make_callback_query("approve:abc123")
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        context = MagicMock()
+
+        await bot._callback_router(update, context)
+
+        # Should show leverage buttons, not execute immediately
+        query.edit_message_text.assert_called_once()
+        call_kwargs = query.edit_message_text.call_args
+        markup = call_kwargs.kwargs.get("reply_markup") or call_kwargs[1].get("reply_markup")
+        assert markup is not None
+        all_data = [
+            btn.callback_data
+            for row in markup.inline_keyboard
+            for btn in row
+            if btn.callback_data
+        ]
+        assert any("leverage:" in d for d in all_data)
+
+    @pytest.mark.asyncio
+    async def test_confirm_leverage_executes_trade(self):
+        """Confirming leverage executes the trade with selected leverage."""
+        bot = self._make_bot()
+        approval = MagicMock()
+        approval.proposal.symbol = "BTC/USDT:USDT"
+        approval.proposal.side.value = "long"
+        approval.proposal.stop_loss = 67000.0
+        approval.proposal.take_profit = [70000.0]
+        approval.proposal.position_size_risk_pct = 1.0
+        approval.snapshot_price = 68000.0
+        bot._approval_manager.get.return_value = approval
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=68000.0)
+
+        exec_result = MagicMock()
+        exec_result.trade_id = "t1"
+        exec_result.symbol = "BTC/USDT:USDT"
+        exec_result.side = "long"
+        exec_result.entry_price = 68000.0
+        exec_result.quantity = 0.1
+        exec_result.fees = 3.4
+        exec_result.mode = "paper"
+        exec_result.sl_order_id = ""
+        exec_result.tp_order_id = ""
+        bot._executor.execute_entry = AsyncMock(return_value=exec_result)
+        bot._executor.place_sl_tp = AsyncMock(return_value=[])
+
+        query = self._make_callback_query("confirm_leverage:abc123:10")
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        context = MagicMock()
+
+        await bot._callback_router(update, context)
+
+        bot._executor.execute_entry.assert_called_once()
+        call_args = bot._executor.execute_entry.call_args
+        assert call_args.kwargs.get("leverage") == 10 or (
+            len(call_args.args) > 2 and call_args.args[2] == 10
+        )
+
+
+class TestPositionOperationCallbacks:
+    def _make_bot(self):
+        return SentinelBot(
+            token="test-token",
+            admin_chat_ids=[123],
+            paper_engine=MagicMock(),
+            data_fetcher=MagicMock(),
+            trade_repo=MagicMock(),
+        )
+
+    def _make_update(self, data: str):
+        query = MagicMock()
+        query.data = data
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        query.message = MagicMock()
+        query.message.message_id = 1
+        query.message.reply_markup = None
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        return update, query
+
+    def _make_position_info(self):
+        return {
+            "position": MagicMock(
+                symbol="BTC/USDT:USDT", side=Side.LONG, leverage=10,
+                entry_price=68000.0, quantity=0.1, margin=680.0,
+                liquidation_price=61540.0, stop_loss=67000.0,
+                take_profit=[70000.0], opened_at=datetime.now(UTC),
+                trade_id="t1",
+            ),
+            "unrealized_pnl": 50.0,
+            "pnl_pct": 0.74,
+            "roe_pct": 7.35,
+        }
+
+    @pytest.mark.asyncio
+    async def test_close_shows_confirmation(self):
+        bot = self._make_bot()
+        bot._paper_engine.get_position_with_pnl.return_value = self._make_position_info()
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=68500.0)
+
+        update, query = self._make_update("close:t1")
+        context = MagicMock()
+        await bot._callback_router(update, context)
+
+        query.edit_message_text.assert_called_once()
+        markup = query.edit_message_text.call_args.kwargs.get("reply_markup")
+        assert markup is not None
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        assert any("confirm_close:" in d for d in all_data)
+
+    @pytest.mark.asyncio
+    async def test_confirm_close_executes(self):
+        bot = self._make_bot()
+        close_result = MagicMock()
+        close_result.pnl = 100.0
+        close_result.symbol = "BTC/USDT:USDT"
+        close_result.side = Side.LONG
+        close_result.entry_price = 68000.0
+        close_result.exit_price = 69000.0
+        close_result.quantity = 0.1
+        close_result.fees = 3.4
+        close_result.reason = "manual"
+        bot._paper_engine.close_position.return_value = close_result
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=69000.0)
+
+        update, query = self._make_update("confirm_close:t1")
+        context = MagicMock()
+        await bot._callback_router(update, context)
+
+        bot._paper_engine.close_position.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_reduce_shows_pct_options(self):
+        bot = self._make_bot()
+        bot._paper_engine.get_position_with_pnl.return_value = self._make_position_info()
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=68500.0)
+
+        update, query = self._make_update("reduce:t1")
+        context = MagicMock()
+        await bot._callback_router(update, context)
+
+        markup = query.edit_message_text.call_args.kwargs.get("reply_markup")
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        assert any("confirm_reduce:" in d for d in all_data)

@@ -162,6 +162,7 @@ class SentinelBot:
         self._approval_manager = approval_manager
         self._executor = executor
         self._data_fetcher = data_fetcher
+        self._leverage_options: list[int] = [5, 10, 20, 50]
 
     _BOT_COMMANDS = [
         BotCommand("status", "Account overview & latest proposals"),
@@ -505,19 +506,33 @@ class SentinelBot:
             return
 
         data = query.data or ""
-        parts = data.split(":", 1)
-        if len(parts) != 2:
-            await query.answer("Invalid action")
-            return
+        parts = data.split(":")
+        action = parts[0] if parts else ""
 
-        action, payload = parts
-
-        if action == "approve":
-            await self._handle_approve(query, payload)
-        elif action == "reject":
-            await self._handle_reject(query, payload)
-        elif action == "translate":
-            await self._handle_translate(query, payload)
+        if action == "approve" and len(parts) >= 2:
+            await self._handle_approve(query, parts[1])
+        elif action == "reject" and len(parts) >= 2:
+            await self._handle_reject(query, parts[1])
+        elif action == "translate" and len(parts) >= 2:
+            await self._handle_translate(query, parts[1])
+        elif action == "confirm_leverage" and len(parts) >= 3:
+            await self._handle_confirm_leverage(query, parts[1], int(parts[2]))
+        elif action == "close" and len(parts) >= 2:
+            await self._handle_close(query, parts[1])
+        elif action == "confirm_close" and len(parts) >= 2:
+            await self._handle_confirm_close(query, parts[1])
+        elif action == "reduce" and len(parts) >= 2:
+            await self._handle_reduce(query, parts[1])
+        elif action == "confirm_reduce" and len(parts) >= 3:
+            await self._handle_confirm_reduce(query, parts[1], float(parts[2]))
+        elif action == "add" and len(parts) >= 2:
+            await self._handle_add(query, parts[1])
+        elif action == "confirm_add" and len(parts) >= 3:
+            await self._handle_confirm_add(query, parts[1], float(parts[2]))
+        elif action == "cancel":
+            await _safe_callback_reply(query, text="Cancelled.")
+        elif action == "history" and len(parts) >= 3:
+            await self._handle_history_callback(query, parts[1], parts[2])
         else:
             await query.answer("Unknown action")
 
@@ -578,6 +593,43 @@ class SentinelBot:
             )
 
     async def _handle_approve(self, query: CallbackQuery, approval_id: str) -> None:
+        """Show leverage selection when user clicks Approve."""
+        if self._approval_manager is None or self._executor is None:
+            await query.answer("Not configured")
+            return
+
+        approval = self._approval_manager.get(approval_id)
+        if approval is None:
+            await query.answer("Expired or not found")
+            await query.edit_message_text("Approval expired or already handled.")
+            return
+
+        # Show leverage selection buttons
+        leverage_buttons = [
+            InlineKeyboardButton(
+                f"{lev}x", callback_data=f"confirm_leverage:{approval_id}:{lev}"
+            )
+            for lev in self._leverage_options
+        ]
+        keyboard = InlineKeyboardMarkup([
+            leverage_buttons,
+            [InlineKeyboardButton("Cancel", callback_data="cancel:0")],
+        ])
+
+        p = approval.proposal
+        text = (
+            f"━━ SELECT LEVERAGE ━━\n"
+            f"{p.symbol}  {p.side.value.upper()}\n\n"
+            f"Risk: {p.position_size_risk_pct}%\n"
+            f"SL: ${p.stop_loss:,.1f}\n"
+            f"Choose leverage:"
+        )
+        await _safe_callback_reply(query, text=text, reply_markup=keyboard)
+
+    async def _handle_confirm_leverage(
+        self, query: CallbackQuery, approval_id: str, leverage: int,
+    ) -> None:
+        """Execute trade with selected leverage."""
         if self._approval_manager is None or self._executor is None:
             await query.answer("Not configured")
             return
@@ -595,8 +647,6 @@ class SentinelBot:
                     approval.proposal.symbol
                 )
 
-            # Validate SL/TP won't immediately trigger (matches exchange behavior:
-            # Binance -2021 "Order would immediately trigger")
             stale_reason = _check_stale_sl_tp(
                 side=approval.proposal.side.value,
                 current_price=current_price,
@@ -611,25 +661,15 @@ class SentinelBot:
                     f"{stale_reason}\n"
                     f"Use /run to get a fresh analysis."
                 )
-                await query.answer("Proposal is stale")
-                await query.edit_message_text(
-                    text=text, reply_markup=_translate_keyboard(),
-                )
+                await _safe_callback_reply(query, text=text, reply_markup=_translate_keyboard())
                 if query.message:
                     self._msg_cache.store(query.message.message_id, text)
-                logger.warning(
-                    "approval_stale",
-                    approval_id=approval_id,
-                    symbol=approval.proposal.symbol,
-                    reason=stale_reason,
-                )
                 return
 
-            # Price is valid — commit the approval
             self._approval_manager.approve(approval_id)
 
             result = await self._executor.execute_entry(
-                approval.proposal, current_price=current_price
+                approval.proposal, current_price=current_price, leverage=leverage,
             )
             sl_tp_ids = await self._executor.place_sl_tp(
                 symbol=approval.proposal.symbol,
@@ -640,10 +680,7 @@ class SentinelBot:
             )
 
             text = format_execution_result(result)
-            await query.answer("Approved!")
-            await query.edit_message_text(
-                text=text, reply_markup=_translate_keyboard(),
-            )
+            await _safe_callback_reply(query, text=text, reply_markup=_translate_keyboard())
             if query.message:
                 self._msg_cache.store(query.message.message_id, text)
 
@@ -657,6 +694,7 @@ class SentinelBot:
                 approval_id=approval_id,
                 symbol=approval.proposal.symbol,
                 trade_id=result.trade_id,
+                leverage=leverage,
                 sl_tp_ids=sl_tp_ids,
             )
         except Exception as e:
@@ -709,3 +747,197 @@ class SentinelBot:
             if not cr["passed"]
         ]
         await self._reply(update, format_eval_report(report_dict))
+
+    # --- Position operation handlers ---
+
+    async def _handle_close(self, query: CallbackQuery, trade_id: str) -> None:
+        """Show close confirmation with current PnL."""
+        if self._paper_engine is None or self._data_fetcher is None:
+            await query.answer("Not configured")
+            return
+
+        try:
+            # Need to find position first to get symbol for price fetch
+            pos = self._paper_engine._find_position(trade_id)
+            current_price = await self._data_fetcher.fetch_current_price(pos.symbol)
+            info = self._paper_engine.get_position_with_pnl(
+                trade_id=trade_id, current_price=current_price,
+            )
+        except ValueError:
+            await query.answer("Position not found")
+            return
+
+        from orchestrator.telegram.formatters import format_position_card
+
+        text = f"━━ CLOSE POSITION? ━━\n\n{format_position_card(info)}"
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("Confirm Close", callback_data=f"confirm_close:{trade_id}"),
+                InlineKeyboardButton("Cancel", callback_data="cancel:0"),
+            ],
+        ])
+        await _safe_callback_reply(query, text=text, reply_markup=keyboard)
+
+    async def _handle_confirm_close(self, query: CallbackQuery, trade_id: str) -> None:
+        if self._paper_engine is None or self._data_fetcher is None:
+            await query.answer("Not configured")
+            return
+
+        try:
+            pos = self._paper_engine._find_position(trade_id)
+            current_price = await self._data_fetcher.fetch_current_price(pos.symbol)
+            result = self._paper_engine.close_position(
+                trade_id=trade_id, current_price=current_price,
+            )
+            text = format_trade_report(result)
+            await _safe_callback_reply(query, text=text, reply_markup=_translate_keyboard())
+            if query.message:
+                self._msg_cache.store(query.message.message_id, text)
+        except Exception as e:
+            await query.answer(f"Error: {e}")
+
+    async def _handle_reduce(self, query: CallbackQuery, trade_id: str) -> None:
+        """Show reduce percentage options."""
+        if self._paper_engine is None or self._data_fetcher is None:
+            await query.answer("Not configured")
+            return
+
+        try:
+            pos = self._paper_engine._find_position(trade_id)
+            current_price = await self._data_fetcher.fetch_current_price(pos.symbol)
+            info = self._paper_engine.get_position_with_pnl(
+                trade_id=trade_id, current_price=current_price,
+            )
+        except ValueError:
+            await query.answer("Position not found")
+            return
+
+        from orchestrator.telegram.formatters import format_position_card
+
+        text = f"━━ REDUCE POSITION ━━\n\n{format_position_card(info)}\n\nSelect percentage to close:"
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("25%", callback_data=f"confirm_reduce:{trade_id}:25"),
+                InlineKeyboardButton("50%", callback_data=f"confirm_reduce:{trade_id}:50"),
+                InlineKeyboardButton("75%", callback_data=f"confirm_reduce:{trade_id}:75"),
+            ],
+            [InlineKeyboardButton("Cancel", callback_data="cancel:0")],
+        ])
+        await _safe_callback_reply(query, text=text, reply_markup=keyboard)
+
+    async def _handle_confirm_reduce(
+        self, query: CallbackQuery, trade_id: str, pct: float,
+    ) -> None:
+        if self._paper_engine is None or self._data_fetcher is None:
+            await query.answer("Not configured")
+            return
+
+        try:
+            pos = self._paper_engine._find_position(trade_id)
+            current_price = await self._data_fetcher.fetch_current_price(pos.symbol)
+            result = self._paper_engine.reduce_position(
+                trade_id=trade_id, pct=pct, current_price=current_price,
+            )
+            text = format_trade_report(result)
+            await _safe_callback_reply(query, text=text, reply_markup=_translate_keyboard())
+            if query.message:
+                self._msg_cache.store(query.message.message_id, text)
+        except Exception as e:
+            await query.answer(f"Error: {e}")
+
+    async def _handle_add(self, query: CallbackQuery, trade_id: str) -> None:
+        """Show risk % options for adding to position."""
+        if self._paper_engine is None or self._data_fetcher is None:
+            await query.answer("Not configured")
+            return
+
+        try:
+            pos = self._paper_engine._find_position(trade_id)
+            current_price = await self._data_fetcher.fetch_current_price(pos.symbol)
+            info = self._paper_engine.get_position_with_pnl(
+                trade_id=trade_id, current_price=current_price,
+            )
+        except ValueError:
+            await query.answer("Position not found")
+            return
+
+        from orchestrator.telegram.formatters import format_position_card
+
+        text = f"━━ ADD TO POSITION ━━\n\n{format_position_card(info)}\n\nSelect risk % to add:"
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("0.5%", callback_data=f"confirm_add:{trade_id}:0.5"),
+                InlineKeyboardButton("1%", callback_data=f"confirm_add:{trade_id}:1.0"),
+                InlineKeyboardButton("2%", callback_data=f"confirm_add:{trade_id}:2.0"),
+            ],
+            [InlineKeyboardButton("Cancel", callback_data="cancel:0")],
+        ])
+        await _safe_callback_reply(query, text=text, reply_markup=keyboard)
+
+    async def _handle_confirm_add(
+        self, query: CallbackQuery, trade_id: str, risk_pct: float,
+    ) -> None:
+        if self._paper_engine is None or self._data_fetcher is None:
+            await query.answer("Not configured")
+            return
+
+        try:
+            pos = self._paper_engine._find_position(trade_id)
+            current_price = await self._data_fetcher.fetch_current_price(pos.symbol)
+            updated = self._paper_engine.add_to_position(
+                trade_id=trade_id, risk_pct=risk_pct, current_price=current_price,
+            )
+            text = (
+                f"━━ POSITION UPDATED ━━\n"
+                f"{updated.symbol}  {updated.side.value.upper()} {updated.leverage}x\n\n"
+                f"New Avg Entry: ${updated.entry_price:,.1f}\n"
+                f"New Qty: {updated.quantity:.4f}\n"
+                f"Margin: ${updated.margin:,.2f}"
+            )
+            await _safe_callback_reply(query, text=text, reply_markup=_translate_keyboard())
+            if query.message:
+                self._msg_cache.store(query.message.message_id, text)
+        except Exception as e:
+            await query.answer(f"Error: {e}")
+
+    async def _handle_history_callback(
+        self, query: CallbackQuery, action: str, value: str,
+    ) -> None:
+        """Handle history pagination callbacks (history:page:N or history:filter:SYMBOL)."""
+        if self._trade_repo is None:
+            await query.answer("Not configured")
+            return
+
+        from orchestrator.telegram.formatters import format_history_paginated
+
+        page_size = 5
+        page = 1
+        symbol_filter: str | None = None
+
+        if action == "page":
+            page = int(value)
+        elif action == "filter":
+            symbol_filter = value
+
+        offset = (page - 1) * page_size
+        trades, total = self._trade_repo.get_closed_paginated(
+            offset=offset, limit=page_size, symbol=symbol_filter,
+        )
+        total_pages = max(1, (total + page_size - 1) // page_size)
+
+        text = format_history_paginated(trades, page=page, total_pages=total_pages)
+
+        nav_buttons: list[InlineKeyboardButton] = []
+        filter_prefix = f"history:filter:{symbol_filter}" if symbol_filter else ""
+        if page > 1:
+            prev_data = f"history:page:{page - 1}"
+            nav_buttons.append(InlineKeyboardButton("Prev", callback_data=prev_data))
+        nav_buttons.append(
+            InlineKeyboardButton(f"Page {page}/{total_pages}", callback_data="cancel:0")
+        )
+        if page < total_pages:
+            next_data = f"history:page:{page + 1}"
+            nav_buttons.append(InlineKeyboardButton("Next", callback_data=next_data))
+
+        keyboard = InlineKeyboardMarkup([nav_buttons])
+        await _safe_callback_reply(query, text=text, reply_markup=keyboard)
