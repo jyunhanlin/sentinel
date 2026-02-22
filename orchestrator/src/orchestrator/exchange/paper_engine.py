@@ -55,6 +55,7 @@ class PaperEngine:
         trade_repo: PaperTradeRepository,
         snapshot_repo: AccountSnapshotRepository,
         stats_calculator: StatsCalculator | None = None,
+        maintenance_margin_rate: float = 0.5,
     ) -> None:
         self._initial_equity = initial_equity
         self._taker_fee_rate = taker_fee_rate
@@ -62,6 +63,7 @@ class PaperEngine:
         self._trade_repo = trade_repo
         self._snapshot_repo = snapshot_repo
         self._stats_calculator = stats_calculator
+        self._maintenance_margin_rate = maintenance_margin_rate
         self._positions: list[Position] = []
         self._closed_pnl: float = 0.0
         self._total_fees: float = 0.0
@@ -85,6 +87,25 @@ class PaperEngine:
 
     def get_open_positions(self) -> list[Position]:
         return list(self._positions)
+
+    def calculate_margin(self, *, quantity: float, price: float, leverage: int) -> float:
+        return quantity * price / leverage
+
+    def calculate_liquidation_price(
+        self, *, entry_price: float, leverage: int, side: Side,
+    ) -> float:
+        mmr = self._maintenance_margin_rate / 100
+        if side == Side.LONG:
+            return entry_price * (1 - 1 / leverage + mmr)
+        return entry_price * (1 + 1 / leverage - mmr)
+
+    @property
+    def used_margin(self) -> float:
+        return sum(p.margin for p in self._positions)
+
+    @property
+    def available_balance(self) -> float:
+        return self.equity - self.used_margin
 
     def open_position(self, proposal: TradeProposal, current_price: float) -> Position:
         if proposal.stop_loss is None:

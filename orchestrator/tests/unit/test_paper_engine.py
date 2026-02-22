@@ -174,3 +174,52 @@ def test_position_has_leverage_fields():
     assert pos.leverage == 10
     assert pos.margin == 680.0
     assert pos.liquidation_price == 61880.0
+
+
+class TestMarginCalculation:
+    def _make_engine(self):
+        return PaperEngine(
+            initial_equity=10000.0,
+            taker_fee_rate=0.0005,
+            position_sizer=RiskPercentSizer(),
+            trade_repo=MagicMock(),
+            snapshot_repo=MagicMock(),
+            maintenance_margin_rate=0.5,
+        )
+
+    def test_calculate_margin(self):
+        engine = self._make_engine()
+        margin = engine.calculate_margin(
+            quantity=0.1,
+            price=68000.0,
+            leverage=10,
+        )
+        assert margin == pytest.approx(680.0)
+
+    def test_calculate_liquidation_price_long(self):
+        engine = self._make_engine()
+        liq = engine.calculate_liquidation_price(
+            entry_price=68000.0,
+            leverage=10,
+            side=Side.LONG,
+        )
+        # liq = 68000 * (1 - 1/10 + 0.005) = 68000 * 0.905 = 61540.0
+        assert liq == pytest.approx(61540.0)
+
+    def test_calculate_liquidation_price_short(self):
+        engine = self._make_engine()
+        liq = engine.calculate_liquidation_price(
+            entry_price=68000.0,
+            leverage=10,
+            side=Side.SHORT,
+        )
+        # liq = 68000 * (1 + 1/10 - 0.005) = 68000 * 1.095 = 74460.0
+        assert liq == pytest.approx(74460.0)
+
+    def test_available_balance(self):
+        engine = self._make_engine()
+        assert engine.available_balance == 10000.0
+
+    def test_used_margin(self):
+        engine = self._make_engine()
+        assert engine.used_margin == 0.0
