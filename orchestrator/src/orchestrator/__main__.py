@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import signal
 from typing import Any
 
 import structlog
@@ -288,6 +289,34 @@ def _run_perf(components: dict[str, Any]) -> None:
     print(format_perf_report(stats))
 
 
+async def _run_bot(components: dict[str, Any], settings: Settings) -> None:
+    scheduler = components["scheduler"]
+    bot = components["bot"]
+
+    # Wire scheduler -> bot notification
+    scheduler._on_result = bot.push_to_admins_with_approval
+
+    app = bot.build()
+    stop = asyncio.Event()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stop.set)
+
+    async with app:
+        await app.start()
+        scheduler.start()
+        await app.updater.start_polling()
+        logger.info("bot_ready", admin_ids=settings.telegram_admin_chat_ids)
+
+        await stop.wait()
+
+        logger.info("shutting_down")
+        scheduler.stop()
+        await app.updater.stop()
+        await app.stop()
+
+
 def main() -> None:
     args = parse_args()
     settings = Settings()  # type: ignore[call-arg]
@@ -305,18 +334,7 @@ def main() -> None:
         return
 
     # Default: run bot + scheduler
-    scheduler = components["scheduler"]
-    bot = components["bot"]
-
-    # Wire scheduler -> bot notification
-    scheduler._on_result = bot.push_to_admins_with_approval
-
-    async def _post_init(_app: Any) -> None:
-        scheduler.start()
-
-    app = bot.build(post_init=_post_init)
-    logger.info("bot_ready", admin_ids=settings.telegram_admin_chat_ids)
-    app.run_polling()
+    asyncio.run(_run_bot(components, settings))
 
 
 if __name__ == "__main__":
