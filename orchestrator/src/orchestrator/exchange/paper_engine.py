@@ -107,7 +107,9 @@ class PaperEngine:
     def available_balance(self) -> float:
         return self.equity - self.used_margin
 
-    def open_position(self, proposal: TradeProposal, current_price: float) -> Position:
+    def open_position(
+        self, proposal: TradeProposal, current_price: float, leverage: int = 1,
+    ) -> Position:
         if proposal.stop_loss is None:
             raise ValueError(
                 f"Cannot open position for {proposal.symbol}: stop_loss is required"
@@ -120,6 +122,16 @@ class PaperEngine:
             risk_pct=proposal.position_size_risk_pct,
             entry_price=current_price,
             stop_loss=stop_loss,
+        )
+
+        margin = self.calculate_margin(quantity=quantity, price=current_price, leverage=leverage)
+        if margin > self.available_balance:
+            raise ValueError(
+                f"Insufficient margin: need ${margin:,.2f}, available ${self.available_balance:,.2f}"
+            )
+
+        liquidation_price = self.calculate_liquidation_price(
+            entry_price=current_price, leverage=leverage, side=proposal.side,
         )
 
         open_fee = quantity * current_price * self._taker_fee_rate
@@ -136,6 +148,9 @@ class PaperEngine:
             take_profit=proposal.take_profit,
             opened_at=datetime.now(UTC),
             risk_pct=proposal.position_size_risk_pct,
+            leverage=leverage,
+            margin=margin,
+            liquidation_price=liquidation_price,
         )
         self._positions.append(position)
 
@@ -147,6 +162,11 @@ class PaperEngine:
             entry_price=position.entry_price,
             quantity=position.quantity,
             risk_pct=position.risk_pct,
+            leverage=leverage,
+            margin=margin,
+            liquidation_price=liquidation_price,
+            stop_loss=stop_loss,
+            take_profit=proposal.take_profit,
         )
 
         logger.info(
@@ -156,6 +176,8 @@ class PaperEngine:
             side=position.side,
             quantity=position.quantity,
             entry_price=current_price,
+            leverage=leverage,
+            margin=margin,
             fee=open_fee,
         )
 
@@ -182,6 +204,8 @@ class PaperEngine:
         return closed
 
     def rebuild_from_db(self) -> None:
+        import json
+
         open_trades = self._trade_repo.get_open_positions()
         self._positions = [
             Position(
@@ -191,10 +215,13 @@ class PaperEngine:
                 side=Side(t.side),
                 entry_price=t.entry_price,
                 quantity=t.quantity,
-                stop_loss=0.0,  # not stored in DB, positions will rely on next check
-                take_profit=[],
+                stop_loss=t.stop_loss,
+                take_profit=json.loads(t.take_profit_json) if t.take_profit_json else [],
                 opened_at=t.opened_at,
                 risk_pct=t.risk_pct,
+                leverage=t.leverage,
+                margin=t.margin,
+                liquidation_price=t.liquidation_price,
             )
             for t in open_trades
         ]

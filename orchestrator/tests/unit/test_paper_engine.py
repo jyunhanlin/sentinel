@@ -31,9 +31,9 @@ def _make_proposal(
 
 
 class TestPaperEngine:
-    def _make_engine(self, *, trade_repo=None, snapshot_repo=None):
+    def _make_engine(self, *, trade_repo=None, snapshot_repo=None, initial_equity=100000.0):
         return PaperEngine(
-            initial_equity=10000.0,
+            initial_equity=initial_equity,
             taker_fee_rate=0.0005,
             position_sizer=RiskPercentSizer(),
             trade_repo=trade_repo or MagicMock(),
@@ -41,7 +41,7 @@ class TestPaperEngine:
         )
 
     def test_open_position(self):
-        engine = self._make_engine()
+        engine = self._make_engine(initial_equity=10000.0)
         proposal = _make_proposal()
         position = engine.open_position(proposal, current_price=95000.0)
         assert position.side == Side.LONG
@@ -51,8 +51,8 @@ class TestPaperEngine:
 
     def test_open_multiple_same_symbol(self):
         engine = self._make_engine()
-        engine.open_position(_make_proposal(), current_price=95000.0)
-        engine.open_position(_make_proposal(risk_pct=1.0), current_price=94000.0)
+        engine.open_position(_make_proposal(), current_price=95000.0, leverage=10)
+        engine.open_position(_make_proposal(risk_pct=1.0), current_price=94000.0, leverage=10)
         assert len(engine.get_open_positions()) == 2
 
     def test_check_sl_triggers_close(self):
@@ -88,16 +88,16 @@ class TestPaperEngine:
 
     def test_equity_after_loss(self):
         engine = self._make_engine()
-        assert engine.equity == 10000.0
+        initial = engine.equity
         engine.open_position(_make_proposal(stop_loss=93000.0), current_price=95000.0)
         engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=92500.0)
         # equity should decrease by PnL + fees
-        assert engine.equity < 10000.0
+        assert engine.equity < initial
 
     def test_open_positions_risk_pct(self):
         engine = self._make_engine()
-        engine.open_position(_make_proposal(risk_pct=1.5), current_price=95000.0)
-        engine.open_position(_make_proposal(risk_pct=2.0), current_price=95000.0)
+        engine.open_position(_make_proposal(risk_pct=1.5), current_price=95000.0, leverage=10)
+        engine.open_position(_make_proposal(risk_pct=2.0), current_price=95000.0, leverage=10)
         assert engine.open_positions_risk_pct == pytest.approx(3.5)
 
     def test_no_trigger_when_price_between_sl_tp(self):
@@ -223,3 +223,40 @@ class TestMarginCalculation:
     def test_used_margin(self):
         engine = self._make_engine()
         assert engine.used_margin == 0.0
+
+
+class TestOpenPositionWithLeverage:
+    def _make_engine(self, **kwargs):
+        defaults = dict(
+            initial_equity=10000.0,
+            taker_fee_rate=0.0005,
+            position_sizer=RiskPercentSizer(),
+            trade_repo=MagicMock(),
+            snapshot_repo=MagicMock(),
+            maintenance_margin_rate=0.5,
+        )
+        defaults.update(kwargs)
+        return PaperEngine(**defaults)
+
+    def test_open_position_with_leverage(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+        assert pos.leverage == 10
+        assert pos.margin == pytest.approx(pos.quantity * 68000.0 / 10)
+        assert pos.liquidation_price > 0
+
+    def test_open_position_default_leverage_1(self):
+        engine = self._make_engine()
+        proposal = _make_proposal()
+        pos = engine.open_position(proposal, current_price=95000.0)
+        assert pos.leverage == 1
+
+    def test_open_position_insufficient_margin(self):
+        # With $10 equity, even 10x leverage on BTC can't fit: margin = qty * 68000 / 10
+        # Position sizer: qty = (10 * 0.015) / 1000 = 0.00015, margin = 0.00015 * 68000 / 1 = 10.2
+        # At leverage=1, margin > equity
+        engine = self._make_engine(initial_equity=10.0)
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        with pytest.raises(ValueError, match="Insufficient margin"):
+            engine.open_position(proposal, current_price=68000.0, leverage=1)
