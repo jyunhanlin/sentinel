@@ -1,4 +1,4 @@
-# Sentinel Orchestrator
+# Sentinel
 
 Multi-LLM crypto trade proposal system with semi-auto execution via Telegram.
 
