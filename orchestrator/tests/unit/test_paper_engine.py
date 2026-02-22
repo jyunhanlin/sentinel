@@ -310,3 +310,101 @@ class TestLiquidation:
         closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=61000.0)
         assert len(closed) == 1
         assert closed[0].pnl == pytest.approx(-margin)
+
+
+class TestManualOperations:
+    def _make_engine(self, **kwargs):
+        defaults = dict(
+            initial_equity=10000.0,
+            taker_fee_rate=0.0005,
+            position_sizer=RiskPercentSizer(),
+            trade_repo=MagicMock(),
+            snapshot_repo=MagicMock(),
+            maintenance_margin_rate=0.5,
+        )
+        defaults.update(kwargs)
+        return PaperEngine(**defaults)
+
+    def test_add_to_position(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+        old_qty = pos.quantity
+        old_entry = pos.entry_price
+
+        updated = engine.add_to_position(
+            trade_id=pos.trade_id, risk_pct=1.0, current_price=69000.0,
+        )
+        assert updated.quantity > old_qty
+        # Avg price should be between old and new
+        assert old_entry < updated.entry_price < 69000.0
+        assert updated.margin > pos.margin
+        assert len(engine.get_open_positions()) == 1  # still one position
+
+    def test_reduce_position_50pct(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+        original_qty = pos.quantity
+
+        result = engine.reduce_position(
+            trade_id=pos.trade_id, pct=50.0, current_price=69000.0,
+        )
+        assert result.quantity == pytest.approx(original_qty * 0.5, rel=0.01)
+        assert result.pnl > 0  # price went up for long
+        remaining = engine.get_open_positions()
+        assert len(remaining) == 1
+        assert remaining[0].quantity == pytest.approx(original_qty * 0.5, rel=0.01)
+
+    def test_close_position(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+
+        result = engine.close_position(
+            trade_id=pos.trade_id, current_price=69000.0,
+        )
+        assert result.reason == "manual"
+        assert len(engine.get_open_positions()) == 0
+
+    def test_reduce_100pct_closes_position(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+
+        result = engine.reduce_position(
+            trade_id=pos.trade_id, pct=100.0, current_price=69000.0,
+        )
+        assert len(engine.get_open_positions()) == 0
+
+    def test_add_insufficient_margin(self):
+        engine = PaperEngine(
+            initial_equity=1000.0,
+            taker_fee_rate=0.0005,
+            position_sizer=RiskPercentSizer(),
+            trade_repo=MagicMock(),
+            snapshot_repo=MagicMock(),
+            maintenance_margin_rate=0.5,
+        )
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0], risk_pct=0.5)
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+
+        with pytest.raises(ValueError, match="Insufficient margin"):
+            engine.add_to_position(
+                trade_id=pos.trade_id, risk_pct=50.0, current_price=69000.0,
+            )
+
+    def test_position_not_found(self):
+        engine = self._make_engine()
+        with pytest.raises(ValueError, match="not found"):
+            engine.close_position(trade_id="nonexistent", current_price=69000.0)
+
+    def test_get_position_with_pnl_long(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+
+        info = engine.get_position_with_pnl(trade_id=pos.trade_id, current_price=69000.0)
+        assert info["unrealized_pnl"] > 0
+        assert info["roe_pct"] > 0
+        assert info["pnl_pct"] > 0

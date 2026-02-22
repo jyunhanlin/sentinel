@@ -183,6 +183,155 @@ class PaperEngine:
 
         return position
 
+    def add_to_position(
+        self, *, trade_id: str, risk_pct: float, current_price: float,
+    ) -> Position:
+        pos = self._find_position(trade_id)
+        add_qty = self._position_sizer.calculate(
+            equity=self.equity, risk_pct=risk_pct,
+            entry_price=current_price, stop_loss=pos.stop_loss,
+        )
+        add_margin = self.calculate_margin(
+            quantity=add_qty, price=current_price, leverage=pos.leverage,
+        )
+        if add_margin > self.available_balance:
+            raise ValueError(
+                f"Insufficient margin: need ${add_margin:,.2f}, "
+                f"available ${self.available_balance:,.2f}"
+            )
+
+        fee = add_qty * current_price * self._taker_fee_rate
+        self._total_fees += fee
+
+        total_qty = pos.quantity + add_qty
+        new_entry = (pos.quantity * pos.entry_price + add_qty * current_price) / total_qty
+        new_margin = pos.margin + add_margin
+        new_liq = self.calculate_liquidation_price(
+            entry_price=new_entry, leverage=pos.leverage, side=pos.side,
+        )
+
+        new_pos = Position(
+            trade_id=pos.trade_id,
+            proposal_id=pos.proposal_id,
+            symbol=pos.symbol,
+            side=pos.side,
+            entry_price=new_entry,
+            quantity=total_qty,
+            stop_loss=pos.stop_loss,
+            take_profit=pos.take_profit,
+            opened_at=pos.opened_at,
+            risk_pct=pos.risk_pct + risk_pct,
+            leverage=pos.leverage,
+            margin=new_margin,
+            liquidation_price=new_liq,
+        )
+        self._replace_position(pos.trade_id, new_pos)
+
+        self._trade_repo.update_trade_position(
+            trade_id=pos.trade_id, entry_price=new_entry,
+            quantity=total_qty, margin=new_margin, liquidation_price=new_liq,
+        )
+        logger.info(
+            "position_added", trade_id=pos.trade_id, add_qty=add_qty,
+            new_avg_entry=new_entry, new_total_qty=total_qty, fee=fee,
+        )
+        return new_pos
+
+    def reduce_position(
+        self, *, trade_id: str, pct: float, current_price: float,
+    ) -> CloseResult:
+        if pct >= 100.0:
+            return self.close_position(trade_id=trade_id, current_price=current_price)
+
+        pos = self._find_position(trade_id)
+        close_qty = pos.quantity * pct / 100
+        remaining_qty = pos.quantity - close_qty
+
+        if pos.side == Side.LONG:
+            pnl = (current_price - pos.entry_price) * close_qty
+        else:
+            pnl = (pos.entry_price - current_price) * close_qty
+
+        fee = close_qty * current_price * self._taker_fee_rate
+        self._total_fees += fee
+        self._closed_pnl += pnl
+
+        remaining_margin = pos.margin * (remaining_qty / pos.quantity)
+
+        new_pos = Position(
+            trade_id=pos.trade_id,
+            proposal_id=pos.proposal_id,
+            symbol=pos.symbol,
+            side=pos.side,
+            entry_price=pos.entry_price,
+            quantity=remaining_qty,
+            stop_loss=pos.stop_loss,
+            take_profit=pos.take_profit,
+            opened_at=pos.opened_at,
+            risk_pct=pos.risk_pct * (remaining_qty / pos.quantity),
+            leverage=pos.leverage,
+            margin=remaining_margin,
+            liquidation_price=pos.liquidation_price,
+        )
+        self._replace_position(pos.trade_id, new_pos)
+
+        self._trade_repo.update_trade_partial_close(
+            trade_id=pos.trade_id,
+            remaining_qty=remaining_qty,
+            remaining_margin=remaining_margin,
+        )
+
+        logger.info(
+            "position_reduced", trade_id=pos.trade_id,
+            close_qty=close_qty, remaining_qty=remaining_qty, pnl=pnl,
+        )
+
+        self._save_stats_snapshot()
+
+        return CloseResult(
+            trade_id=pos.trade_id,
+            symbol=pos.symbol,
+            side=pos.side,
+            entry_price=pos.entry_price,
+            exit_price=current_price,
+            quantity=close_qty,
+            pnl=pnl,
+            fees=fee,
+            reason="partial_reduce",
+        )
+
+    def close_position(self, *, trade_id: str, current_price: float) -> CloseResult:
+        pos = self._find_position(trade_id)
+        self._positions = [p for p in self._positions if p.trade_id != trade_id]
+        return self._close(pos, exit_price=current_price, reason="manual")
+
+    def get_position_with_pnl(
+        self, *, trade_id: str, current_price: float,
+    ) -> dict:
+        pos = self._find_position(trade_id)
+        direction = 1 if pos.side == Side.LONG else -1
+        unrealized_pnl = (current_price - pos.entry_price) * pos.quantity * direction
+        notional = pos.entry_price * pos.quantity
+        pnl_pct = (unrealized_pnl / notional * 100) if notional else 0
+        roe_pct = (unrealized_pnl / pos.margin * 100) if pos.margin else pnl_pct
+        return {
+            "position": pos,
+            "unrealized_pnl": unrealized_pnl,
+            "pnl_pct": pnl_pct,
+            "roe_pct": roe_pct,
+        }
+
+    def _find_position(self, trade_id: str) -> Position:
+        for p in self._positions:
+            if p.trade_id == trade_id:
+                return p
+        raise ValueError(f"Position {trade_id} not found")
+
+    def _replace_position(self, trade_id: str, new_pos: Position) -> None:
+        self._positions = [
+            new_pos if p.trade_id == trade_id else p for p in self._positions
+        ]
+
     def check_sl_tp(self, *, symbol: str, current_price: float) -> list[CloseResult]:
         closed: list[CloseResult] = []
         remaining: list[Position] = []
