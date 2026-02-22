@@ -62,6 +62,26 @@ class TestPaperExecutor:
         )
         assert order_ids == []
 
+    @pytest.mark.asyncio
+    async def test_execute_entry_passes_leverage(self):
+        paper_engine = MagicMock()
+        position = MagicMock()
+        position.trade_id = "t1"
+        position.symbol = "BTC/USDT:USDT"
+        position.side = Side.LONG
+        position.entry_price = 68000.0
+        position.quantity = 0.1
+        position.leverage = 10
+        position.margin = 680.0
+        paper_engine.open_position.return_value = position
+        paper_engine._taker_fee_rate = 0.0005
+
+        executor = PaperExecutor(paper_engine=paper_engine)
+        proposal = _make_proposal()
+        result = await executor.execute_entry(proposal, current_price=68000.0, leverage=10)
+        paper_engine.open_position.assert_called_once_with(proposal, 68000.0, leverage=10)
+        assert result.mode == "paper"
+
     def test_execution_result_is_frozen(self):
         result = ExecutionResult(
             trade_id="t-001",

@@ -33,7 +33,7 @@ class ExecutionResult(BaseModel, frozen=True):
 class OrderExecutor(ABC):
     @abstractmethod
     async def execute_entry(
-        self, proposal: TradeProposal, current_price: float
+        self, proposal: TradeProposal, current_price: float, leverage: int = 1,
     ) -> ExecutionResult: ...
 
     @abstractmethod
@@ -56,9 +56,9 @@ class PaperExecutor(OrderExecutor):
         self._paper_engine = paper_engine
 
     async def execute_entry(
-        self, proposal: TradeProposal, current_price: float
+        self, proposal: TradeProposal, current_price: float, leverage: int = 1,
     ) -> ExecutionResult:
-        position = self._paper_engine.open_position(proposal, current_price)
+        position = self._paper_engine.open_position(proposal, current_price, leverage=leverage)
         logger.info(
             "paper_execution",
             trade_id=position.trade_id,
@@ -124,7 +124,7 @@ class LiveExecutor(OrderExecutor):
         return deviation
 
     async def execute_entry(
-        self, proposal: TradeProposal, current_price: float
+        self, proposal: TradeProposal, current_price: float, leverage: int = 1,
     ) -> ExecutionResult:
         if proposal.stop_loss is None:
             raise ValueError(
