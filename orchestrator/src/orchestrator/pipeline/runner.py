@@ -74,15 +74,15 @@ class PipelineRunner:
         self, symbol: str, *, timeframe: str = "1h", model_override: str | None = None
     ) -> PipelineResult:
         run_id = str(uuid.uuid4())
-        log = logger.bind(run_id=run_id, symbol=symbol, model_override=model_override)
-        log.info("pipeline_start")
+        structlog.contextvars.bind_contextvars(symbol=symbol)
+        logger.info("pipeline_start", run_id=run_id)
 
         self._pipeline_repo.create_run(run_id=run_id, symbol=symbol)
 
         try:
             # Step 1: Fetch market data
             snapshot = await self._data_fetcher.fetch_snapshot(symbol, timeframe=timeframe)
-            log.info("snapshot_fetched", price=snapshot.current_price)
+            logger.info("snapshot_fetched", price=snapshot.current_price)
 
             # Step 2: Check SL/TP on existing positions
             close_results: list[CloseResult] = []
@@ -91,7 +91,7 @@ class PipelineRunner:
                     symbol=symbol, current_price=snapshot.current_price
                 )
                 for cr in close_results:
-                    log.info("position_closed_sltp", trade_id=cr.trade_id, reason=cr.reason)
+                    logger.info("position_closed_sltp", trade_id=cr.trade_id, reason=cr.reason)
 
             # Step 3: Run LLM-1 and LLM-2 in parallel
             sentiment_result, market_result = await asyncio.gather(
@@ -129,7 +129,7 @@ class PipelineRunner:
                     risk_check_reason=aggregation.rejection_reason,
                 )
                 self._pipeline_repo.update_run_status(run_id, "rejected")
-                log.warning("pipeline_rejected", reason=aggregation.rejection_reason)
+                logger.warning("pipeline_rejected", reason=aggregation.rejection_reason)
 
                 return PipelineResult(
                     run_id=run_id,
@@ -177,7 +177,7 @@ class PipelineRunner:
                         risk_check_reason=risk_result.reason,
                     )
                     self._pipeline_repo.update_run_status(run_id, status)
-                    log.warning(
+                    logger.warning(
                         "pipeline_risk_blocked", status=status, rule=risk_result.rule_violated
                     )
 
@@ -212,7 +212,7 @@ class PipelineRunner:
                             risk_check_result="pending_approval",
                         )
                         self._pipeline_repo.update_run_status(run_id, "pending_approval")
-                        log.info("pipeline_pending_approval", approval_id=approval.approval_id)
+                        logger.info("pipeline_pending_approval", approval_id=approval.approval_id)
                         return PipelineResult(
                             run_id=run_id,
                             symbol=symbol,
@@ -240,7 +240,7 @@ class PipelineRunner:
                 risk_check_result="approved",
             )
             self._pipeline_repo.update_run_status(run_id, "completed")
-            log.info("pipeline_completed", side=aggregation.proposal.side)
+            logger.info("pipeline_completed", side=aggregation.proposal.side)
 
             return PipelineResult(
                 run_id=run_id,
@@ -256,7 +256,7 @@ class PipelineRunner:
             )
 
         except Exception as e:
-            log.error("pipeline_failed", error=str(e))
+            logger.error("pipeline_failed", error=str(e))
             self._pipeline_repo.update_run_status(run_id, "failed")
             return PipelineResult(
                 run_id=run_id,
@@ -264,6 +264,8 @@ class PipelineRunner:
                 status="failed",
                 rejection_reason=str(e),
             )
+        finally:
+            structlog.contextvars.unbind_contextvars("symbol")
 
     def _save_llm_calls(self, run_id: str, agent_type: str, result: AgentResult[BaseModel]) -> None:
         import json

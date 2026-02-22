@@ -52,10 +52,10 @@ class LLMClient:
 
         logger.info(
             "llm_call_complete",
-            model=effective_model,
-            input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens,
             latency_ms=result.latency_ms,
+            model=effective_model,
+            tokens_in=result.input_tokens,
+            tokens_out=result.output_tokens,
         )
 
         return result

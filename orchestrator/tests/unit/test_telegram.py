@@ -163,7 +163,7 @@ class TestFormatTradeReport:
             reason="sl",
         )
         text = format_trade_report(result)
-        assert "[CLOSED]" in text
+        assert "CLOSED" in text
         assert "BTC/USDT:USDT" in text
         assert "LONG" in text
         assert "93,000.0" in text
@@ -202,7 +202,7 @@ class TestFormatRiskRejection:
             entry_price=95000.0,
             risk_result=risk_result,
         )
-        assert "[RISK REJECTED]" in text
+        assert "RISK REJECTED" in text
         assert "BTC/USDT:USDT" in text
         assert "max_total_exposure" in text
 
@@ -219,7 +219,7 @@ class TestFormatRiskRejection:
             entry_price=95000.0,
             risk_result=risk_result,
         )
-        assert "[RISK PAUSED]" in text
+        assert "RISK PAUSED" in text
 
 
 class TestFormatHistory:

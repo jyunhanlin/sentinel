@@ -56,13 +56,13 @@ _TRANSLATE_CACHE_MAX = 200
 
 def _translate_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("translate", callback_data="translate:zh")]
+        [InlineKeyboardButton("Translate", callback_data="translate:zh")]
     ])
 
 
 def _english_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("translate", callback_data="translate:en")]
+        [InlineKeyboardButton("Translate", callback_data="translate:en")]
     ])
 
 
@@ -313,7 +313,9 @@ class SentinelBot:
                 symbol_args.append(arg)
 
         model_label = (model_override or "default").split("/")[-1]
-        await self._reply(update, f"Running pipeline (model: {model_label})...")
+        status_msg = await update.message.reply_text(
+            f"Running pipeline (model: {model_label})..."
+        ) if update.message else None
 
         if symbol_args:
             query = symbol_args[0].upper()
@@ -328,9 +330,18 @@ class SentinelBot:
 
         self._running_symbols.update(symbols)
         try:
-            results = await self._scheduler.run_once(symbols=symbols, model_override=model_override)
+            results = await self._scheduler.run_once(
+                symbols=symbols, model_override=model_override,
+                source="command", notify=False,
+            )
         finally:
             self._running_symbols.difference_update(symbols)
+
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass  # message may already be gone
 
         for result in results:
             self._latest_results[result.symbol] = result
@@ -416,7 +427,7 @@ class SentinelBot:
                     "Reject", callback_data=f"reject:{approval.approval_id}"
                 ),
             ],
-            [InlineKeyboardButton("translate", callback_data="translate:zh")],
+            [InlineKeyboardButton("Translate", callback_data="translate:zh")],
         ])
         msg = await self._app.bot.send_message(
             chat_id=chat_id, text=text, reply_markup=keyboard,
@@ -490,7 +501,7 @@ class SentinelBot:
             rows = []
             if has_approval_buttons:
                 rows.append(approval_row)
-            rows.append([InlineKeyboardButton("EN", callback_data="translate:en")])
+            rows.append([InlineKeyboardButton("Translate", callback_data="translate:en")])
             await query.edit_message_text(
                 text=translated,
                 reply_markup=InlineKeyboardMarkup(rows),
@@ -499,7 +510,7 @@ class SentinelBot:
             rows = []
             if has_approval_buttons:
                 rows.append(approval_row)
-            rows.append([InlineKeyboardButton("translate", callback_data="translate:zh")])
+            rows.append([InlineKeyboardButton("Translate", callback_data="translate:zh")])
             await query.edit_message_text(
                 text=original,
                 reply_markup=InlineKeyboardMarkup(rows),

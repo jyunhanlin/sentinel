@@ -189,9 +189,7 @@ class ClaudeCLIBackend(LLMBackend):
         content = envelope.get("result", "")
 
         logger.info(
-            "claude_cli_complete",
-            model=model,
-            cli_model=cli_model,
+            "cli_complete",
             duration_ms=envelope.get("duration_ms", elapsed_ms),
             cost_usd=envelope.get("cost_usd", 0),
         )

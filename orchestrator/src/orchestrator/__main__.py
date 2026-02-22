@@ -172,6 +172,7 @@ def create_app_components(
         runner=runner,
         symbols=symbols,
         interval_minutes=pipeline_interval_minutes,
+        default_model=llm_model,
         premium_model=llm_model_premium,
         approval_manager=approval_manager,
     )

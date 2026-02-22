@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
@@ -26,12 +27,14 @@ class PipelineScheduler:
         runner: PipelineRunner,
         symbols: list[str],
         interval_minutes: int = 15,
+        default_model: str = "",
         premium_model: str = "",
         approval_manager: ApprovalManager | None = None,
         on_result: ResultCallback | None = None,
     ) -> None:
         self.symbols = symbols
         self.interval_minutes = interval_minutes
+        self._runner_default_model = default_model
         self.premium_model = premium_model
         self._runner = runner
         self._approval_manager = approval_manager
@@ -43,24 +46,25 @@ class PipelineScheduler:
         *,
         symbols: list[str] | None = None,
         model_override: str | None = None,
+        source: str = "scheduler",
+        notify: bool = True,
     ) -> list[PipelineResult]:
         target_symbols = symbols or self.symbols
-        results = []
-        for symbol in target_symbols:
-            logger.info("scheduler_running_symbol", symbol=symbol, model_override=model_override)
+        effective_model = model_override or self._runner_default_model or "default"
+
+        async def _run_symbol(symbol: str) -> PipelineResult:
+            logger.info("pipeline_running", symbol=symbol, model=effective_model, source=source)
             result = await self._runner.execute(symbol, model_override=model_override)
-            results.append(result)
-            logger.info(
-                "scheduler_symbol_done",
-                symbol=symbol,
-                status=result.status,
-            )
-            if self._on_result is not None:
+            logger.info("pipeline_done", symbol=symbol, model=effective_model, status=result.status, source=source)
+            if notify and self._on_result is not None:
                 try:
                     await self._on_result(result)
                 except Exception:
                     logger.exception("on_result_callback_failed", symbol=symbol)
-        return results
+            return result
+
+        results = await asyncio.gather(*[_run_symbol(s) for s in target_symbols])
+        return list(results)
 
     async def _run_daily_premium(self) -> None:
         """Daily deep analysis using premium model (Opus)."""
