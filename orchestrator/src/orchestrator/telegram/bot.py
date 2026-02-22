@@ -56,13 +56,13 @@ _TRANSLATE_CACHE_MAX = 200
 
 def _translate_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Translate", callback_data="translate:zh")]
+        [InlineKeyboardButton("Translate to zh-TW", callback_data="translate:zh")]
     ])
 
 
 def _english_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("Translate", callback_data="translate:en")]
+        [InlineKeyboardButton("Translate to en", callback_data="translate:en")]
     ])
 
 
@@ -427,7 +427,7 @@ class SentinelBot:
                     "Reject", callback_data=f"reject:{approval.approval_id}"
                 ),
             ],
-            [InlineKeyboardButton("Translate", callback_data="translate:zh")],
+            [InlineKeyboardButton("Translate to zh-TW", callback_data="translate:zh")],
         ])
         msg = await self._app.bot.send_message(
             chat_id=chat_id, text=text, reply_markup=keyboard,
@@ -496,12 +496,16 @@ class SentinelBot:
             if self._llm_client is None:
                 await query.answer("Translation not available")
                 return
-            await query.answer("Translating...")
-            translated = await to_chinese(original, self._llm_client)
+            structlog.contextvars.bind_contextvars(source="translate")
+            try:
+                translated = await to_chinese(original, self._llm_client)
+            finally:
+                structlog.contextvars.unbind_contextvars("source")
+            await query.answer()
             rows = []
             if has_approval_buttons:
                 rows.append(approval_row)
-            rows.append([InlineKeyboardButton("Translate", callback_data="translate:en")])
+            rows.append([InlineKeyboardButton("Translate to en", callback_data="translate:en")])
             await query.edit_message_text(
                 text=translated,
                 reply_markup=InlineKeyboardMarkup(rows),
@@ -510,7 +514,7 @@ class SentinelBot:
             rows = []
             if has_approval_buttons:
                 rows.append(approval_row)
-            rows.append([InlineKeyboardButton("Translate", callback_data="translate:zh")])
+            rows.append([InlineKeyboardButton("Translate to zh-TW", callback_data="translate:zh")])
             await query.edit_message_text(
                 text=original,
                 reply_markup=InlineKeyboardMarkup(rows),
