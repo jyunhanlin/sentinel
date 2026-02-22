@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     claude_cli_path: str = "claude"
     claude_cli_timeout: int = 120                    # seconds
 
+    # Logging
+    log_json: bool = False  # True for structured JSON, False for console
+
     # Database
     database_url: str = "sqlite:///data/sentinel.db"
 

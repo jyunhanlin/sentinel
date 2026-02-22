@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import structlog
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from orchestrator.agents.base import AgentResult, BaseAgent
 from orchestrator.exchange.data_fetcher import DataFetcher
@@ -32,6 +33,7 @@ class PipelineResult(BaseModel, frozen=True):
     symbol: str
     status: str  # completed, rejected, risk_rejected, risk_paused, pending_approval, failed
     model_used: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     proposal: TradeProposal | None = None
     rejection_reason: str = ""
     approval_id: str | None = None
@@ -115,6 +117,8 @@ class PipelineRunner:
             )
 
             model_used = model_override or ""
+            if proposer_result.llm_calls:
+                model_used = proposer_result.llm_calls[-1].model
 
             if not aggregation.valid:
                 self._proposal_repo.save_proposal(
@@ -199,6 +203,7 @@ class PipelineRunner:
                             proposal=aggregation.proposal,
                             run_id=run_id,
                             snapshot_price=snapshot.current_price,
+                            model_used=model_used,
                         )
                         self._proposal_repo.save_proposal(
                             proposal_id=aggregation.proposal.proposal_id,

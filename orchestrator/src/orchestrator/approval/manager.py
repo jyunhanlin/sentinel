@@ -23,6 +23,7 @@ class PendingApproval(BaseModel, frozen=True):
     created_at: datetime
     expires_at: datetime
     status: str = "pending"
+    model_used: str = ""
     message_id: int | None = None
 
 
@@ -33,7 +34,7 @@ class ApprovalManager:
         self._pending: dict[str, PendingApproval] = {}
 
     def create(
-        self, *, proposal: TradeProposal, run_id: str, snapshot_price: float
+        self, *, proposal: TradeProposal, run_id: str, snapshot_price: float, model_used: str = ""
     ) -> PendingApproval:
         approval_id = str(uuid.uuid4())
         now = datetime.now(UTC)
@@ -46,6 +47,7 @@ class ApprovalManager:
             snapshot_price=snapshot_price,
             created_at=now,
             expires_at=expires_at,
+            model_used=model_used,
         )
         self._pending[approval_id] = approval
 

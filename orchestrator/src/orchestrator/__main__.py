@@ -289,10 +289,9 @@ def _run_perf(components: dict[str, Any]) -> None:
 
 
 def main() -> None:
-    setup_logging(json_output=True)
     args = parse_args()
-
     settings = Settings()  # type: ignore[call-arg]
+    setup_logging(json_output=settings.log_json)
     logger.info("starting_sentinel", exchange=settings.exchange_id)
 
     components = _build_components(settings)
@@ -306,8 +305,16 @@ def main() -> None:
         return
 
     # Default: run bot + scheduler
-    components["scheduler"].start()
-    app = components["bot"].build()
+    scheduler = components["scheduler"]
+    bot = components["bot"]
+
+    # Wire scheduler -> bot notification
+    scheduler._on_result = bot.push_to_admins_with_approval
+
+    async def _post_init(_app: Any) -> None:
+        scheduler.start()
+
+    app = bot.build(post_init=_post_init)
     logger.info("bot_ready", admin_ids=settings.telegram_admin_chat_ids)
     app.run_polling()
 

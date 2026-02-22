@@ -460,7 +460,7 @@ class TestApprovalCallback:
         update.effective_chat.id = 123
         context = MagicMock()
 
-        await bot._approval_callback(update, context)
+        await bot._callback_router(update, context)
         executor.execute_entry.assert_called_once()
         query.answer.assert_called()
 
@@ -509,7 +509,7 @@ class TestApprovalCallback:
         update.effective_chat.id = 123
         context = MagicMock()
 
-        await bot._approval_callback(update, context)
+        await bot._callback_router(update, context)
         approval_mgr.reject.assert_called_once_with("a-002")
         query.edit_message_text.assert_called()
 
@@ -550,7 +550,7 @@ class TestEvalHandler:
 
         await bot._eval_handler(update, context)
         text = update.message.reply_text.call_args[0][0]
-        assert "not configured" in text.lower() or "not available" in text.lower()
+        assert "not configured" in text.lower()
 
 
 def _make_update(chat_id: int = 123):
@@ -666,7 +666,7 @@ class TestRunHandler:
         update = _make_update(123)
         await bot._run_handler(update, _make_context())
         text = update.message.reply_text.call_args[0][0]
-        assert "not configured" in text.lower() or "Pipeline" in text
+        assert "not configured" in text.lower()
 
     @pytest.mark.asyncio
     async def test_run_all_symbols(self):
@@ -697,7 +697,7 @@ class TestHistoryHandler:
         update = _make_update(123)
         await bot._history_handler(update, _make_context())
         text = update.message.reply_text.call_args[0][0]
-        assert "not configured" in text.lower() or "Paper" in text
+        assert "not configured" in text.lower()
 
     @pytest.mark.asyncio
     async def test_history_with_trades(self):
@@ -716,7 +716,7 @@ class TestResumeHandler:
         update = _make_update(123)
         await bot._resume_handler(update, _make_context())
         text = update.message.reply_text.call_args[0][0]
-        assert "not configured" in text.lower() or "Paper" in text
+        assert "not configured" in text.lower()
 
     @pytest.mark.asyncio
     async def test_resume_unpauses(self):
@@ -922,3 +922,87 @@ class TestPerfHandler:
         await bot._perf_handler(update, context)
         text = update.message.reply_text.call_args[0][0]
         assert "No" in text or "no" in text
+
+
+class TestTranslation:
+    def test_to_chinese_labels(self):
+        from orchestrator.telegram.translations import to_chinese
+
+        text = "[NEW] BTC/USDT:USDT  (02/22 11:00)\nSide: LONG\nEntry: market\nRisk: 1.5%"
+        zh = to_chinese(text)
+        assert "新提案" in zh
+        assert "方向：" in zh
+        assert "進場：" in zh
+        assert "風險：" in zh
+        # Original values preserved
+        assert "BTC/USDT:USDT" in zh
+        assert "LONG" in zh
+
+    def test_to_chinese_status(self):
+        from orchestrator.telegram.translations import to_chinese
+
+        text = "Latest pipeline results:\n─────────────────────\nBTC — LONG [completed]"
+        zh = to_chinese(text)
+        assert "最新 Pipeline 結果" in zh
+
+    def test_to_chinese_perf(self):
+        from orchestrator.telegram.translations import to_chinese
+
+        text = "Performance Report\n─────\nWin Rate: 60%\nSharpe Ratio: 1.2"
+        zh = to_chinese(text)
+        assert "績效報告" in zh
+        assert "勝率" in zh
+
+    def test_to_chinese_passthrough(self):
+        from orchestrator.telegram.translations import to_chinese
+
+        text = "BTC/USDT:USDT 95000.0"
+        assert to_chinese(text) == text  # No labels to translate
+
+
+class TestTranslateCallback:
+    @pytest.mark.asyncio
+    async def test_translate_to_chinese(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        bot._msg_cache.store(42, "[NEW] BTC\nSide: LONG")
+
+        query = MagicMock()
+        query.data = "translate:zh"
+        query.message.message_id = 42
+        query.message.reply_markup = None
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        context = MagicMock()
+
+        await bot._callback_router(update, context)
+        edited_text = query.edit_message_text.call_args[1]["text"]
+        assert "新提案" in edited_text
+        assert "方向：" in edited_text
+
+    @pytest.mark.asyncio
+    async def test_translate_back_to_english(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        original = "[NEW] BTC\nSide: LONG"
+        bot._msg_cache.store(42, original)
+
+        query = MagicMock()
+        query.data = "translate:en"
+        query.message.message_id = 42
+        query.message.reply_markup = None
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        context = MagicMock()
+
+        await bot._callback_router(update, context)
+        edited_text = query.edit_message_text.call_args[1]["text"]
+        assert edited_text == original

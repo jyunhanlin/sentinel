@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from orchestrator.exchange.paper_engine import CloseResult
@@ -11,6 +12,10 @@ if TYPE_CHECKING:
     from orchestrator.execution.executor import ExecutionResult
     from orchestrator.pipeline.runner import PipelineResult
     from orchestrator.storage.models import PaperTradeRecord, TradeProposalRecord
+
+
+def _fmt_time(dt: datetime) -> str:
+    return dt.strftime("%m/%d %H:%M")
 
 
 def format_welcome() -> str:
@@ -25,17 +30,17 @@ def format_welcome() -> str:
 def format_help() -> str:
     return (
         "Available commands:\n\n"
-        "/start - Welcome message\n"
-        "/status - Account overview & latest proposals\n"
-        "/coin <symbol> - Detailed analysis for a symbol (e.g. /coin BTC)\n"
-        "/run - Trigger pipeline for all symbols\n"
-        "/run <symbol> - Trigger pipeline for specific symbol\n"
-        "/run <symbol> sonnet|opus - Trigger with specific model\n"
-        "/history - Recent trade records\n"
-        "/perf - Performance report (PnL, win rate, Sharpe, etc.)\n"
-        "/eval - Run LLM evaluation and show results\n"
-        "/resume - Un-pause pipeline after risk pause\n"
-        "/help - Show this message"
+        "/start — Welcome message\n"
+        "/status — Account overview & latest proposals\n"
+        "/coin <symbol> — Detailed analysis for a symbol (e.g. /coin BTC)\n"
+        "/run — Trigger pipeline for all symbols\n"
+        "/run <symbol> — Trigger pipeline for specific symbol\n"
+        "/run <symbol> sonnet|opus — Trigger with specific model\n"
+        "/history — Recent trade records\n"
+        "/perf — Performance report (PnL, win rate, Sharpe, etc.)\n"
+        "/eval — Run LLM evaluation and show results\n"
+        "/resume — Un-pause pipeline after risk pause\n"
+        "/help — Show this message"
     )
 
 
@@ -44,12 +49,16 @@ def format_proposal(result: PipelineResult) -> str:
         return f"Pipeline {result.status}: {result.rejection_reason or 'No proposal generated'}"
 
     p = result.proposal
-    status_emoji = {"completed": "NEW", "rejected": "REJECTED", "failed": "FAILED"}.get(
-        result.status, result.status.upper()
-    )
+    status_emoji = {
+        "completed": "NEW",
+        "rejected": "REJECTED",
+        "failed": "FAILED",
+        "pending_approval": "PENDING APPROVAL",
+    }.get(result.status, result.status.upper())
 
+    time_str = _fmt_time(result.created_at)
     lines = [
-        f"[{status_emoji}] {p.symbol}",
+        f"[{status_emoji}] {p.symbol}  ({time_str})",
         f"Side: {p.side.value.upper()}",
     ]
 
@@ -67,21 +76,14 @@ def format_proposal(result: PipelineResult) -> str:
     lines.append(f"Rationale: {p.rationale}")
 
     if result.model_used:
-        model_label = result.model_used.split("/")[-1]
-        lines.append(f"Model: {model_label}")
+        lines.append(f"Model: {result.model_used.split('/')[-1]}")
 
     if result.status == "rejected":
         lines.append(f"\nREJECTED: {result.rejection_reason}")
 
-    degraded_agents = []
-    if result.sentiment_degraded:
-        degraded_agents.append("sentiment")
-    if result.market_degraded:
-        degraded_agents.append("market")
-    if result.proposer_degraded:
-        degraded_agents.append("proposer")
-    if degraded_agents:
-        lines.append(f"\nDegraded: {', '.join(degraded_agents)}")
+    degraded = _degraded_labels(result)
+    if degraded:
+        lines.append(f"\nDegraded: {', '.join(degraded)}")
 
     return "\n".join(lines)
 
@@ -90,13 +92,53 @@ def format_status(results: list[PipelineResult]) -> str:
     if not results:
         return "No pipeline results yet. Use /run to trigger analysis."
 
-    lines = ["Latest pipeline results:\n"]
+    blocks = ["Latest pipeline results:\n─────────────────────"]
     for r in results:
         side = r.proposal.side.value.upper() if r.proposal else "N/A"
-        conf = f"{r.proposal.confidence:.0%}" if r.proposal else "N/A"
-        lines.append(f"  {r.symbol}: {side} (confidence: {conf}) [{r.status}]")
+        time_str = _fmt_time(r.created_at)
+        blocks.append(f"{r.symbol} — {side} [{r.status}]  ({time_str})")
 
-    return "\n".join(lines)
+        if r.proposal is None:
+            reason = r.rejection_reason or "No proposal generated"
+            blocks.append(f"  {reason}")
+        elif r.proposal.side.value == "flat":
+            blocks.append(f"  Confidence: {r.proposal.confidence:.0%}")
+            blocks.append(f"  Rationale: {_truncate(r.proposal.rationale, 80)}")
+        else:
+            p = r.proposal
+            blocks.append(f"  Entry: {p.entry.type} | Risk: {p.position_size_risk_pct}%")
+            sl_str = f"${p.stop_loss:,.1f}" if p.stop_loss is not None else "—"
+            tp_str = ", ".join(f"${tp:,.1f}" for tp in p.take_profit) if p.take_profit else "—"
+            blocks.append(f"  SL: {sl_str} | TP: {tp_str}")
+            blocks.append(f"  Confidence: {p.confidence:.0%} | Horizon: {p.time_horizon}")
+
+        if r.model_used:
+            blocks.append(f"  Model: {r.model_used.split('/')[-1]}")
+
+        degraded = _degraded_labels(r)
+        if degraded:
+            blocks.append(f"  Degraded: {', '.join(degraded)}")
+
+        blocks.append("")  # blank line separator
+
+    return "\n".join(blocks).rstrip()
+
+
+def _truncate(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
+
+
+def _degraded_labels(result: PipelineResult) -> list[str]:
+    labels: list[str] = []
+    if result.sentiment_degraded:
+        labels.append("sentiment")
+    if result.market_degraded:
+        labels.append("market")
+    if result.proposer_degraded:
+        labels.append("proposer")
+    return labels
 
 
 def format_trade_report(result: CloseResult) -> str:
@@ -133,20 +175,43 @@ def format_status_from_records(records: list[TradeProposalRecord]) -> str:
     if not records:
         return "No pipeline results yet. Use /run to trigger analysis."
 
-    lines = ["Latest proposals (from DB):\n"]
+    blocks = ["Latest proposals (from DB):\n─────────────────────"]
     for r in records:
         try:
-            proposal = json.loads(r.proposal_json)
-            symbol = proposal.get("symbol", "?")
-            side = proposal.get("side", "?").upper()
-            confidence = proposal.get("confidence", 0)
-            conf_str = f"{confidence:.0%}" if isinstance(confidence, float) else str(confidence)
+            p = json.loads(r.proposal_json)
+            symbol = p.get("symbol", "?")
+            side = p.get("side", "?").upper()
             status = r.risk_check_result or "unknown"
-            lines.append(f"  {symbol}: {side} (confidence: {conf_str}) [{status}]")
-        except (json.JSONDecodeError, AttributeError):
-            lines.append(f"  [parse error] proposal_id={r.proposal_id}")
+            time_str = _fmt_time(r.created_at)
+            blocks.append(f"{symbol} — {side} [{status}]  ({time_str})")
 
-    return "\n".join(lines)
+            confidence = p.get("confidence", 0)
+            conf_str = f"{confidence:.0%}" if isinstance(confidence, float) else str(confidence)
+
+            if side == "FLAT":
+                blocks.append(f"  Confidence: {conf_str}")
+                rationale = p.get("rationale", "")
+                if rationale:
+                    blocks.append(f"  Rationale: {_truncate(rationale, 80)}")
+            else:
+                entry_type = p.get("entry", {}).get("type", "?")
+                risk_pct = p.get("position_size_risk_pct", "?")
+                blocks.append(f"  Entry: {entry_type} | Risk: {risk_pct}%")
+
+                sl = p.get("stop_loss")
+                sl_str = f"${sl:,.1f}" if sl is not None else "—"
+                tps = p.get("take_profit", [])
+                tp_str = ", ".join(f"${tp:,.1f}" for tp in tps) if tps else "—"
+                blocks.append(f"  SL: {sl_str} | TP: {tp_str}")
+
+                horizon = p.get("time_horizon", "?")
+                blocks.append(f"  Confidence: {conf_str} | Horizon: {horizon}")
+
+            blocks.append("")  # blank line separator
+        except (json.JSONDecodeError, AttributeError):
+            blocks.append(f"[parse error] proposal_id={r.proposal_id}\n")
+
+    return "\n".join(blocks).rstrip()
 
 
 def format_perf_report(stats: PerformanceStats) -> str:
@@ -205,6 +270,9 @@ def format_pending_approval(approval: PendingApproval) -> str:
         lines.append(f"TP: {tp_str}")
     lines.append(f"Confidence: {p.confidence:.0%}")
     lines.append(f"Rationale: {p.rationale}")
+
+    if approval.model_used:
+        lines.append(f"Model: {approval.model_used.split('/')[-1]}")
 
     remaining = int((approval.expires_at - approval.created_at).total_seconds() / 60)
     lines.append(f"\nExpires in {remaining} minutes")

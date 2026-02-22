@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections import OrderedDict
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -25,6 +26,7 @@ from orchestrator.telegram.formatters import (
     format_trade_report,
     format_welcome,
 )
+from orchestrator.telegram.translations import to_chinese
 
 if TYPE_CHECKING:
     from orchestrator.approval.manager import ApprovalManager, PendingApproval
@@ -48,9 +50,40 @@ MODEL_ALIASES: dict[str, str] = {
     "opus": "anthropic/claude-opus-4-6",
 }
 
+_TRANSLATE_CACHE_MAX = 200
+
+
+def _translate_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("翻譯", callback_data="translate:zh")]
+    ])
+
+
+def _english_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("EN", callback_data="translate:en")]
+    ])
+
 
 def is_admin(chat_id: int, *, admin_ids: list[int]) -> bool:
     return chat_id in admin_ids
+
+
+class _MessageCache:
+    """Bounded LRU cache mapping message_id → original English text."""
+
+    def __init__(self, maxsize: int = _TRANSLATE_CACHE_MAX) -> None:
+        self._data: OrderedDict[int, str] = OrderedDict()
+        self._maxsize = maxsize
+
+    def store(self, message_id: int, text: str) -> None:
+        self._data[message_id] = text
+        self._data.move_to_end(message_id)
+        while len(self._data) > self._maxsize:
+            self._data.popitem(last=False)
+
+    def get(self, message_id: int) -> str | None:
+        return self._data.get(message_id)
 
 
 class SentinelBot:
@@ -76,6 +109,8 @@ class SentinelBot:
         self._app: Application | None = None
         self._scheduler = scheduler
         self._latest_results: dict[str, object] = {}  # symbol → PipelineResult
+        self._running_symbols: set[str] = set()
+        self._msg_cache = _MessageCache()
         self._paper_engine = paper_engine
         self._trade_repo = trade_repo
         self._proposal_repo = proposal_repo
@@ -85,8 +120,11 @@ class SentinelBot:
         self._executor = executor
         self._data_fetcher = data_fetcher
 
-    def build(self) -> Application:
-        self._app = Application.builder().token(self.token).build()
+    def build(self, *, post_init: Any = None) -> Application:
+        builder = Application.builder().token(self.token)
+        if post_init is not None:
+            builder = builder.post_init(post_init)
+        self._app = builder.build()
         self._app.add_handler(CommandHandler("start", self._start_handler))
         self._app.add_handler(CommandHandler("help", self._help_handler))
         self._app.add_handler(CommandHandler("status", self._status_handler))
@@ -96,19 +134,36 @@ class SentinelBot:
         self._app.add_handler(CommandHandler("resume", self._resume_handler))
         self._app.add_handler(CommandHandler("perf", self._perf_handler))
         self._app.add_handler(CommandHandler("eval", self._eval_handler))
-        self._app.add_handler(CallbackQueryHandler(self._approval_callback))
+        self._app.add_handler(CallbackQueryHandler(self._callback_router))
         return self._app
+
+    # --- Push methods (for scheduled / background notifications) ---
 
     async def push_proposal(self, chat_id: int, result: PipelineResult) -> None:
         """Push a pipeline result to a specific chat."""
         if self._app is None:
             return
         msg = format_proposal(result)
-        await self._app.bot.send_message(chat_id=chat_id, text=msg)
+        sent = await self._app.bot.send_message(
+            chat_id=chat_id, text=msg, reply_markup=_translate_keyboard(),
+        )
+        self._msg_cache.store(sent.message_id, msg)
 
     async def push_to_admins(self, result: PipelineResult) -> None:
         """Push a pipeline result to all admin chats."""
         for chat_id in self.admin_chat_ids:
+            await self.push_proposal(chat_id, result)
+
+    async def push_to_admins_with_approval(self, result: PipelineResult) -> None:
+        """Push a pipeline result to all admins, with approval buttons if applicable."""
+        if self._app is None:
+            return
+        for chat_id in self.admin_chat_ids:
+            if result.status == "pending_approval" and result.approval_id and self._approval_manager:
+                approval = self._approval_manager.get(result.approval_id)
+                if approval:
+                    await self.push_pending_approval(chat_id, approval)
+                    continue
             await self.push_proposal(chat_id, result)
 
     async def push_close_report(self, result: CloseResult) -> None:
@@ -117,7 +172,10 @@ class SentinelBot:
             return
         msg = format_trade_report(result)
         for chat_id in self.admin_chat_ids:
-            await self._app.bot.send_message(chat_id=chat_id, text=msg)
+            sent = await self._app.bot.send_message(
+                chat_id=chat_id, text=msg, reply_markup=_translate_keyboard(),
+            )
+            self._msg_cache.store(sent.message_id, msg)
 
     async def push_risk_rejection(
         self, *, symbol: str, side: str, entry_price: float, risk_result: RiskResult
@@ -129,13 +187,21 @@ class SentinelBot:
             symbol=symbol, side=side, entry_price=entry_price, risk_result=risk_result
         )
         for chat_id in self.admin_chat_ids:
-            await self._app.bot.send_message(chat_id=chat_id, text=msg)
+            sent = await self._app.bot.send_message(
+                chat_id=chat_id, text=msg, reply_markup=_translate_keyboard(),
+            )
+            self._msg_cache.store(sent.message_id, msg)
 
-    @staticmethod
-    async def _reply(update: Update, text: str) -> None:
-        """Send a reply, handling the case where update.message may be None."""
-        if update.message is not None:
-            await update.message.reply_text(text)
+    # --- Reply helper with translate button ---
+
+    async def _reply(self, update: Update, text: str) -> None:
+        """Send a reply with a translate button, caching the English text."""
+        if update.message is None:
+            return
+        sent = await update.message.reply_text(
+            text, reply_markup=_translate_keyboard(),
+        )
+        self._msg_cache.store(sent.message_id, text)
 
     async def _check_admin(self, update: Update) -> bool:
         chat_id = update.effective_chat.id if update.effective_chat else 0
@@ -144,33 +210,43 @@ class SentinelBot:
             return False
         return True
 
+    # --- Command handlers ---
+
     async def _start_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
         if not await self._check_admin(update):
             return
-        await self._reply(update,format_welcome())
+        await self._reply(update, format_welcome())
 
     async def _help_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
         if not await self._check_admin(update):
             return
-        await self._reply(update,format_help())
+        await self._reply(update, format_help())
 
     async def _status_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
         if not await self._check_admin(update):
             return
+
+        parts: list[str] = []
+        if self._running_symbols:
+            syms = ", ".join(sorted(self._running_symbols))
+            parts.append(f"Running pipeline: {syms}\n")
+
         results = list(self._latest_results.values())
         if results:
-            await self._reply(update,format_status(results))
+            parts.append(format_status(results))
         elif self._proposal_repo is not None:
             records = self._proposal_repo.get_recent(limit=10)
-            await self._reply(update,format_status_from_records(records))
+            parts.append(format_status_from_records(records))
         else:
-            await self._reply(update,format_status([]))
+            parts.append(format_status([]))
+
+        await self._reply(update, "\n".join(parts))
 
     async def _coin_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -179,21 +255,19 @@ class SentinelBot:
             return
         args = context.args
         if not args:
-            await self._reply(update,"Usage: /coin <symbol> (e.g. /coin BTC)")
+            await self._reply(update, "Usage: /coin <symbol> (e.g. /coin BTC)")
             return
 
         query = args[0].upper()
-        # Find matching symbol from in-memory cache
         matching = [
             r for sym, r in self._latest_results.items() if query in sym.upper()
         ]
 
         if matching:
             for result in matching:
-                await self._reply(update,format_proposal(result))
+                await self._reply(update, format_proposal(result))
             return
 
-        # Fallback: search DB records
         if self._proposal_repo is not None:
             import json
 
@@ -207,12 +281,10 @@ class SentinelBot:
                 except (json.JSONDecodeError, AttributeError):
                     pass
             if matching_records:
-                await self._reply(update,format_status_from_records(matching_records))
+                await self._reply(update, format_status_from_records(matching_records))
                 return
 
-        await self._reply(update,
-            f"No recent analysis for {query}. Use /run to trigger analysis."
-        )
+        await self._reply(update, f"No recent analysis for {query}. Use /run to trigger analysis.")
 
     async def _run_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -220,13 +292,11 @@ class SentinelBot:
         if not await self._check_admin(update):
             return
         if self._scheduler is None:
-            await self._reply(update,"Pipeline not configured.")
+            await self._reply(update, "Pipeline not configured.")
             return
 
         args = list(context.args or [])
 
-        # Parse model from args: /run [symbol] [model]
-        # model can be "sonnet", "opus", or a full model ID
         model_override: str | None = self._premium_model or None
         symbol_args: list[str] = []
 
@@ -240,7 +310,7 @@ class SentinelBot:
                 symbol_args.append(arg)
 
         model_label = (model_override or "default").split("/")[-1]
-        await self._reply(update,f"Running pipeline (model: {model_label})...")
+        await self._reply(update, f"Running pipeline (model: {model_label})...")
 
         if symbol_args:
             query = symbol_args[0].upper()
@@ -248,15 +318,33 @@ class SentinelBot:
                 s for s in self._scheduler.symbols if query in s.upper()
             ]
             if not symbols:
-                await self._reply(update,f"Unknown symbol: {query}")
+                await self._reply(update, f"Unknown symbol: {query}")
                 return
-            results = await self._scheduler.run_once(symbols=symbols, model_override=model_override)
         else:
-            results = await self._scheduler.run_once(model_override=model_override)
+            symbols = list(self._scheduler.symbols)
+
+        self._running_symbols.update(symbols)
+        try:
+            results = await self._scheduler.run_once(symbols=symbols, model_override=model_override)
+        finally:
+            self._running_symbols.difference_update(symbols)
 
         for result in results:
             self._latest_results[result.symbol] = result
-            await self._reply(update,format_proposal(result))
+            if result.status == "pending_approval" and result.approval_id:
+                approval = (
+                    self._approval_manager.get(result.approval_id)
+                    if self._approval_manager
+                    else None
+                )
+                if approval and update.effective_chat:
+                    await self.push_pending_approval(
+                        update.effective_chat.id, approval
+                    )
+                else:
+                    await self._reply(update, format_proposal(result))
+            else:
+                await self._reply(update, format_proposal(result))
 
     async def _history_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -264,10 +352,10 @@ class SentinelBot:
         if not await self._check_admin(update):
             return
         if self._trade_repo is None:
-            await self._reply(update,"Paper trading not configured.")
+            await self._reply(update, "Paper trading not configured.")
             return
         trades = self._trade_repo.get_recent_closed(limit=10)
-        await self._reply(update,format_history(trades))
+        await self._reply(update, format_history(trades))
 
     async def _resume_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -275,10 +363,10 @@ class SentinelBot:
         if not await self._check_admin(update):
             return
         if self._paper_engine is None:
-            await self._reply(update,"Paper trading not configured.")
+            await self._reply(update, "Paper trading not configured.")
             return
         self._paper_engine.set_paused(False)
-        await self._reply(update,"Pipeline resumed. Trading un-paused.")
+        await self._reply(update, "Pipeline resumed. Trading un-paused.")
 
     async def _perf_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -286,13 +374,11 @@ class SentinelBot:
         if not await self._check_admin(update):
             return
         if self._snapshot_repo is None:
-            await self._reply(update,"Stats not configured.")
+            await self._reply(update, "Stats not configured.")
             return
         snapshot = self._snapshot_repo.get_latest()
         if snapshot is None or snapshot.total_trades == 0:
-            await self._reply(update,
-                "No performance data yet. Close some positions first."
-            )
+            await self._reply(update, "No performance data yet. Close some positions first.")
             return
         from orchestrator.stats.calculator import PerformanceStats
 
@@ -309,12 +395,15 @@ class SentinelBot:
             max_drawdown_pct=snapshot.max_drawdown_pct,
             sharpe_ratio=snapshot.sharpe_ratio,
         )
-        await self._reply(update,format_perf_report(stats))
+        await self._reply(update, format_perf_report(stats))
+
+    # --- Approval flow ---
 
     async def push_pending_approval(self, chat_id: int, approval: PendingApproval) -> int | None:
-        """Push proposal with Approve/Reject keyboard. Returns message_id."""
+        """Push proposal with Approve/Reject + Translate keyboard. Returns message_id."""
         if self._app is None:
             return None
+        text = format_pending_approval(approval)
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
@@ -323,16 +412,18 @@ class SentinelBot:
                 InlineKeyboardButton(
                     "Reject", callback_data=f"reject:{approval.approval_id}"
                 ),
-            ]
+            ],
+            [InlineKeyboardButton("翻譯", callback_data="translate:zh")],
         ])
         msg = await self._app.bot.send_message(
-            chat_id=chat_id,
-            text=format_pending_approval(approval),
-            reply_markup=keyboard,
+            chat_id=chat_id, text=text, reply_markup=keyboard,
         )
+        self._msg_cache.store(msg.message_id, text)
         return msg.message_id
 
-    async def _approval_callback(
+    # --- Callback router ---
+
+    async def _callback_router(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
         query = update.callback_query
@@ -349,14 +440,64 @@ class SentinelBot:
             await query.answer("Invalid action")
             return
 
-        action, approval_id = parts
+        action, payload = parts
 
         if action == "approve":
-            await self._handle_approve(query, approval_id)
+            await self._handle_approve(query, payload)
         elif action == "reject":
-            await self._handle_reject(query, approval_id)
+            await self._handle_reject(query, payload)
+        elif action == "translate":
+            await self._handle_translate(query, payload)
         else:
             await query.answer("Unknown action")
+
+    async def _handle_translate(self, query: CallbackQuery, lang: str) -> None:
+        """Toggle message between English and Chinese."""
+        msg_id = query.message.message_id if query.message else None
+        if msg_id is None:
+            await query.answer()
+            return
+
+        original = self._msg_cache.get(msg_id)
+        if original is None:
+            await query.answer("Message too old to translate")
+            return
+
+        # Preserve approval buttons if present
+        existing_markup = query.message.reply_markup if query.message else None
+        has_approval_buttons = False
+        approval_row: list[InlineKeyboardButton] = []
+        if existing_markup:
+            for row in existing_markup.inline_keyboard:
+                for btn in row:
+                    if btn.callback_data and (
+                        btn.callback_data.startswith("approve:")
+                        or btn.callback_data.startswith("reject:")
+                    ):
+                        has_approval_buttons = True
+                        approval_row = list(row)
+                        break
+
+        if lang == "zh":
+            translated = to_chinese(original)
+            rows = []
+            if has_approval_buttons:
+                rows.append(approval_row)
+            rows.append([InlineKeyboardButton("EN", callback_data="translate:en")])
+            await query.edit_message_text(
+                text=translated,
+                reply_markup=InlineKeyboardMarkup(rows),
+            )
+        else:
+            rows = []
+            if has_approval_buttons:
+                rows.append(approval_row)
+            rows.append([InlineKeyboardButton("翻譯", callback_data="translate:zh")])
+            await query.edit_message_text(
+                text=original,
+                reply_markup=InlineKeyboardMarkup(rows),
+            )
+        await query.answer()
 
     async def _handle_approve(self, query: CallbackQuery, approval_id: str) -> None:
         if self._approval_manager is None or self._executor is None:
@@ -370,7 +511,6 @@ class SentinelBot:
             return
 
         try:
-            # Re-fetch price for deviation check
             current_price = approval.snapshot_price
             if self._data_fetcher is not None:
                 current_price = await self._data_fetcher.fetch_current_price(
@@ -388,8 +528,19 @@ class SentinelBot:
                 take_profit=approval.proposal.take_profit,
             )
 
+            text = format_execution_result(result)
             await query.answer("Approved!")
-            await query.edit_message_text(format_execution_result(result))
+            await query.edit_message_text(
+                text=text, reply_markup=_translate_keyboard(),
+            )
+            if query.message:
+                self._msg_cache.store(query.message.message_id, text)
+
+            symbol = approval.proposal.symbol
+            if symbol in self._latest_results:
+                self._latest_results[symbol] = self._latest_results[symbol].model_copy(
+                    update={"status": "executed"}
+                )
             logger.info(
                 "approval_executed",
                 approval_id=approval_id,
@@ -417,6 +568,11 @@ class SentinelBot:
             f"[REJECTED] {approval.proposal.symbol} {approval.proposal.side.value.upper()}\n"
             "Trade proposal rejected by admin."
         )
+        symbol = approval.proposal.symbol
+        if symbol in self._latest_results:
+            self._latest_results[symbol] = self._latest_results[symbol].model_copy(
+                update={"status": "rejected"}
+            )
 
     async def _eval_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
@@ -424,12 +580,11 @@ class SentinelBot:
         if not await self._check_admin(update):
             return
         if self._eval_runner is None:
-            await self._reply(update,"Eval not configured.")
+            await self._reply(update, "Eval not configured.")
             return
-        await self._reply(update,"Running evaluation...")
+        await self._reply(update, "Running evaluation...")
         report = await self._eval_runner.run_default()
         report_dict = report.model_dump()
-        # Add failure details for the formatter
         report_dict["failures"] = [
             {"case_id": cr["case_id"], "reason": "; ".join(
                 s["reason"] for s in cr["scores"] if not s["passed"]
@@ -437,4 +592,4 @@ class SentinelBot:
             for cr in report_dict["case_results"]
             if not cr["passed"]
         ]
-        await self._reply(update,format_eval_report(report_dict))
+        await self._reply(update, format_eval_report(report_dict))

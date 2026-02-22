@@ -13,7 +13,9 @@ def setup_logging(*, json_output: bool = True) -> None:
     if json_output:
         processors.append(structlog.processors.JSONRenderer())
     else:
-        processors.append(structlog.dev.ConsoleRenderer())
+        processors.append(structlog.dev.ConsoleRenderer(
+            pad_event=30, pad_level=False,
+        ))
 
     structlog.configure(
         processors=processors,
