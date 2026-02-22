@@ -166,7 +166,10 @@ def format_execution_result(result: ExecutionResult) -> str:
 
 
 def format_trade_report(result: CloseResult) -> str:
-    reason_label = {"sl": "SL", "tp": "TP"}.get(result.reason, result.reason.upper())
+    reason_label = {
+        "sl": "SL", "tp": "TP", "liquidation": "LIQUIDATION",
+        "manual": "MANUAL", "partial_reduce": "PARTIAL",
+    }.get(result.reason, result.reason.upper())
     pnl_sign = "+" if result.pnl >= 0 else "-"
     pnl_str = f"{pnl_sign}${abs(result.pnl):,.2f}"
 
@@ -342,6 +345,91 @@ def format_eval_report(report: dict[str, Any]) -> str:
         lines.append("")
         for f in failures:
             lines.append(f"  {f['case_id']}: {f['reason']}")
+
+    return "\n".join(lines)
+
+
+def format_position_card(info: dict) -> str:
+    """Format a single position with PnL info for /status display."""
+    pos = info["position"]
+    pnl = info["unrealized_pnl"]
+    pnl_pct = info["pnl_pct"]
+    roe_pct = info["roe_pct"]
+
+    pnl_sign = "+" if pnl >= 0 else ""
+    side_str = pos.side.value.upper() if hasattr(pos.side, "value") else str(pos.side).upper()
+    leverage_str = f" {pos.leverage}x" if pos.leverage > 1 else ""
+
+    lines = [
+        f"{pos.symbol}  {side_str}{leverage_str}",
+        f"Entry: ${pos.entry_price:,.1f} | Qty: {pos.quantity:.4f}",
+    ]
+    if pos.margin > 0:
+        lines.append(f"Margin: ${pos.margin:,.2f} | Liq: ${pos.liquidation_price:,.1f}")
+    lines.append(f"SL: ${pos.stop_loss:,.1f}")
+    if pos.take_profit:
+        tp_str = ", ".join(f"${tp:,.1f}" for tp in pos.take_profit)
+        lines.append(f"TP: {tp_str}")
+
+    lines.append(f"PnL: {pnl_sign}${pnl:,.2f} ({pnl_sign}{pnl_pct:.2f}%)")
+    if pos.margin > 0:
+        lines.append(f"ROE: {pnl_sign}{roe_pct:.2f}%")
+
+    return "\n".join(lines)
+
+
+def format_account_overview(
+    *,
+    equity: float,
+    available: float,
+    used_margin: float,
+    initial_equity: float,
+    position_cards: list[str],
+) -> str:
+    """Format account overview with margin info."""
+    total_pnl = equity - initial_equity
+    pnl_sign = "+" if total_pnl >= 0 else ""
+
+    lines = [
+        "━━ Account Overview ━━",
+        "",
+        f"Equity:      ${equity:,.2f} ({pnl_sign}${total_pnl:,.2f})",
+        f"Available:   ${available:,.2f}",
+        f"Used Margin: ${used_margin:,.2f}",
+    ]
+
+    if position_cards:
+        lines.append(f"\n━━ Open Positions ({len(position_cards)}) ━━")
+        for card in position_cards:
+            lines.append(f"\n{card}")
+
+    return "\n".join(lines)
+
+
+def format_history_paginated(
+    trades: list[PaperTradeRecord],
+    page: int,
+    total_pages: int,
+) -> str:
+    """Format closed trades with pagination info."""
+    if not trades:
+        return "No closed trades yet."
+
+    lines = [f"━━ Trade History — Page {page}/{total_pages} ━━"]
+    for t in trades:
+        pnl_sign = "+" if t.pnl >= 0 else "-"
+        pnl_str = f"{pnl_sign}${abs(t.pnl):,.2f}"
+        side_str = t.side.upper() if isinstance(t.side, str) else t.side.value.upper()
+        leverage_str = f" {t.leverage}x" if t.leverage > 1 else ""
+        reason_str = f" ({t.close_reason.upper()})" if t.close_reason else ""
+
+        lines.append(f"\n  {t.symbol} {side_str}{leverage_str}{reason_str}")
+        lines.append(f"  ${t.entry_price:,.1f} → ${t.exit_price:,.1f} | PnL: {pnl_str}")
+
+        if t.margin > 0:
+            roe = (t.pnl / t.margin * 100) if t.margin else 0
+            roe_sign = "+" if roe >= 0 else ""
+            lines.append(f"  Margin: ${t.margin:,.2f} | ROE: {roe_sign}{roe:.2f}%")
 
     return "\n".join(lines)
 

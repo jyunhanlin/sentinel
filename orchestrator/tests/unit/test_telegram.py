@@ -10,8 +10,11 @@ from orchestrator.risk.checker import RiskResult
 from orchestrator.storage.models import PaperTradeRecord, TradeProposalRecord
 from orchestrator.telegram.bot import SentinelBot, is_admin
 from orchestrator.telegram.formatters import (
+    format_account_overview,
     format_help,
     format_history,
+    format_history_paginated,
+    format_position_card,
     format_proposal,
     format_risk_rejection,
     format_status,
@@ -1012,3 +1015,60 @@ class TestTranslateCallback:
         await bot._callback_router(update, context)
         query.answer.assert_awaited_with("Translation not available")
         query.edit_message_text.assert_not_called()
+
+
+class TestLeverageFormatting:
+    def test_format_position_card(self):
+        info = {
+            "position": MagicMock(
+                symbol="BTC/USDT:USDT",
+                side=Side.LONG,
+                leverage=10,
+                entry_price=68000.0,
+                quantity=0.1,
+                margin=680.0,
+                liquidation_price=61540.0,
+                stop_loss=67000.0,
+                take_profit=[70000.0],
+                opened_at=datetime.now(UTC),
+                trade_id="t1",
+            ),
+            "unrealized_pnl": 125.0,
+            "pnl_pct": 1.84,
+            "roe_pct": 18.4,
+        }
+        text = format_position_card(info)
+        assert "10x" in text
+        assert "Margin" in text
+        assert "Liq" in text
+        assert "ROE" in text
+
+    def test_format_account_overview(self):
+        text = format_account_overview(
+            equity=10150.0,
+            available=7320.0,
+            used_margin=2680.0,
+            initial_equity=10000.0,
+            position_cards=["...card..."],
+        )
+        assert "Available" in text
+        assert "Used Margin" in text
+
+    def test_format_history_paginated(self):
+        trade = MagicMock(
+            symbol="BTC/USDT:USDT",
+            side="long",
+            leverage=10,
+            entry_price=68000.0,
+            exit_price=67000.0,
+            pnl=-100.0,
+            fees=3.4,
+            opened_at=datetime.now(UTC),
+            closed_at=datetime.now(UTC),
+            close_reason="sl",
+            margin=680.0,
+        )
+        text = format_history_paginated([trade], page=1, total_pages=3)
+        assert "Page 1/3" in text
+        assert "10x" in text
+        assert "ROE" in text
