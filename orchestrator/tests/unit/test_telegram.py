@@ -630,6 +630,66 @@ class TestStatusHandler:
         assert "No" in text or "no" in text
 
 
+class TestStatusWithPositions:
+    @pytest.mark.asyncio
+    async def test_status_shows_position_cards(self):
+        """Status should show open positions with PnL when engine is available."""
+        mock_engine = MagicMock()
+        pos = MagicMock(
+            trade_id="t1", symbol="BTC/USDT:USDT", side=Side.LONG,
+            leverage=10, entry_price=68000.0, quantity=0.1,
+            margin=680.0, liquidation_price=61540.0,
+            stop_loss=67000.0, take_profit=[70000.0],
+            opened_at=datetime.now(UTC),
+        )
+        mock_engine.get_open_positions.return_value = [pos]
+        mock_engine.get_position_with_pnl.return_value = {
+            "position": pos,
+            "unrealized_pnl": 100.0,
+            "pnl_pct": 1.47,
+            "roe_pct": 14.7,
+        }
+        mock_engine.equity = 10100.0
+        mock_engine.available_balance = 9420.0
+        mock_engine.used_margin = 680.0
+        mock_engine._initial_equity = 10000.0
+
+        mock_fetcher = MagicMock()
+        mock_fetcher.fetch_current_price = AsyncMock(return_value=69000.0)
+
+        bot = SentinelBot(
+            token="t", admin_chat_ids=[123],
+            paper_engine=mock_engine, data_fetcher=mock_fetcher,
+        )
+        update = _make_update(123)
+        await bot._status_handler(update, _make_context())
+
+        # Should have sent a message with position info
+        assert update.message.reply_text.call_count >= 1
+        # Check that the account overview or position card was sent
+        calls = update.message.reply_text.call_args_list
+        all_text = " ".join(str(c) for c in calls)
+        assert "BTC" in all_text or "LONG" in all_text or "Margin" in all_text
+
+    @pytest.mark.asyncio
+    async def test_status_no_positions_shows_basic(self):
+        """When no positions, status should show normal overview."""
+        mock_engine = MagicMock()
+        mock_engine.get_open_positions.return_value = []
+        mock_engine.equity = 10000.0
+        mock_engine.available_balance = 10000.0
+        mock_engine.used_margin = 0.0
+        mock_engine._initial_equity = 10000.0
+
+        bot = SentinelBot(
+            token="t", admin_chat_ids=[123],
+            paper_engine=mock_engine,
+        )
+        update = _make_update(123)
+        await bot._status_handler(update, _make_context())
+        update.message.reply_text.assert_called()
+
+
 class TestCoinHandler:
     @pytest.mark.asyncio
     async def test_coin_no_args(self):

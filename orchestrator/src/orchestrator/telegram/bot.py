@@ -292,6 +292,57 @@ class SentinelBot:
         if not await self._check_admin(update):
             return
 
+        # Show position cards if paper engine is available
+        if self._paper_engine is not None and self._data_fetcher is not None:
+            positions = self._paper_engine.get_open_positions()
+            if positions:
+                from orchestrator.telegram.formatters import (
+                    format_account_overview,
+                    format_position_card,
+                )
+
+                position_cards: list[str] = []
+                for pos in positions:
+                    try:
+                        current_price = await self._data_fetcher.fetch_current_price(
+                            pos.symbol
+                        )
+                        info = self._paper_engine.get_position_with_pnl(
+                            trade_id=pos.trade_id, current_price=current_price,
+                        )
+                        position_cards.append(format_position_card(info))
+                    except Exception as e:
+                        logger.warning("position_card_error", trade_id=pos.trade_id, error=str(e))
+
+                overview = format_account_overview(
+                    equity=self._paper_engine.equity,
+                    available=self._paper_engine.available_balance,
+                    used_margin=self._paper_engine.used_margin,
+                    initial_equity=self._paper_engine._initial_equity,
+                    position_cards=position_cards,
+                )
+                # Send overview, then per-position messages with action buttons
+                await self._reply(update, overview)
+                for pos in positions:
+                    keyboard = InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton(
+                                "Close", callback_data=f"close:{pos.trade_id}",
+                            ),
+                            InlineKeyboardButton(
+                                "Reduce", callback_data=f"reduce:{pos.trade_id}",
+                            ),
+                            InlineKeyboardButton(
+                                "Add", callback_data=f"add:{pos.trade_id}",
+                            ),
+                        ],
+                    ])
+                    if update.message:
+                        sent = await update.message.reply_text(
+                            f"{pos.symbol} actions:", reply_markup=keyboard,
+                        )
+                return
+
         parts: list[str] = []
         if self._running_symbols:
             syms = ", ".join(sorted(self._running_symbols))
