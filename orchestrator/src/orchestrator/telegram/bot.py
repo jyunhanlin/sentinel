@@ -562,11 +562,12 @@ class SentinelBot:
             logger.info(
                 "approval_executed",
                 approval_id=approval_id,
+                symbol=approval.proposal.symbol,
                 trade_id=result.trade_id,
                 sl_tp_ids=sl_tp_ids,
             )
         except Exception as e:
-            logger.error("approval_execution_failed", error=str(e))
+            logger.error("approval_execution_failed", symbol=approval.proposal.symbol, error=str(e))
             await query.answer("Execution failed")
             await query.edit_message_text(f"Execution failed: {e}")
 
@@ -582,10 +583,14 @@ class SentinelBot:
             return
 
         await query.answer("Rejected")
-        await query.edit_message_text(
-            f"[REJECTED] {approval.proposal.symbol} {approval.proposal.side.value.upper()}\n"
+        text = (
+            f"━━ REJECTED ━━\n"
+            f"{approval.proposal.symbol}  {approval.proposal.side.value.upper()}\n\n"
             "Trade proposal rejected by admin."
         )
+        await query.edit_message_text(text=text, reply_markup=_translate_keyboard())
+        if query.message:
+            self._msg_cache.store(query.message.message_id, text)
         symbol = approval.proposal.symbol
         if symbol in self._latest_results:
             self._latest_results[symbol] = self._latest_results[symbol].model_copy(

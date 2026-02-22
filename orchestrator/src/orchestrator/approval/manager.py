@@ -78,7 +78,7 @@ class ApprovalManager:
 
         del self._pending[approval_id]
         self._repo.update_status(approval_id, status="approved")
-        logger.info("approval_approved", approval_id=approval_id)
+        logger.info("approval_approved", approval_id=approval_id, symbol=approval.proposal.symbol)
         return approval
 
     def reject(self, approval_id: str) -> PendingApproval | None:
@@ -86,7 +86,7 @@ class ApprovalManager:
         if approval is None:
             return None
         self._repo.update_status(approval_id, status="rejected")
-        logger.info("approval_rejected", approval_id=approval_id)
+        logger.info("approval_rejected", approval_id=approval_id, symbol=approval.proposal.symbol)
         return approval
 
     def get(self, approval_id: str) -> PendingApproval | None:
@@ -114,6 +114,10 @@ class ApprovalManager:
         return len(self._pending)
 
     def _expire(self, approval_id: str) -> None:
-        self._pending.pop(approval_id, None)
+        expired_approval = self._pending.pop(approval_id, None)
         self._repo.update_status(approval_id, status="expired")
-        logger.info("approval_expired", approval_id=approval_id)
+        logger.info(
+            "approval_expired",
+            approval_id=approval_id,
+            symbol=expired_approval.proposal.symbol if expired_approval else "unknown",
+        )
