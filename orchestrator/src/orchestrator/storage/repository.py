@@ -134,7 +134,14 @@ class PaperTradeRepository:
         entry_price: float,
         quantity: float,
         risk_pct: float = 0.0,
+        leverage: int = 1,
+        margin: float = 0.0,
+        liquidation_price: float = 0.0,
+        stop_loss: float = 0.0,
+        take_profit: list[float] | None = None,
     ) -> PaperTradeRecord:
+        import json
+
         record = PaperTradeRecord(
             trade_id=trade_id,
             proposal_id=proposal_id,
@@ -143,6 +150,11 @@ class PaperTradeRepository:
             entry_price=entry_price,
             quantity=quantity,
             risk_pct=risk_pct,
+            leverage=leverage,
+            margin=margin,
+            liquidation_price=liquidation_price,
+            stop_loss=stop_loss,
+            take_profit_json=json.dumps(take_profit or []),
         )
         self._session.add(record)
         self._session.commit()
@@ -221,6 +233,88 @@ class PaperTradeRepository:
         )
         trades = list(self._session.exec(statement).all())
         return sum(t.pnl for t in trades if t.closed_at and t.closed_at.date() == day)
+
+    def get_closed_paginated(
+        self,
+        offset: int = 0,
+        limit: int = 5,
+        symbol: str | None = None,
+    ) -> tuple[list[PaperTradeRecord], int]:
+        """Return (trades, total_count) with pagination and optional symbol filter."""
+        from sqlmodel import func
+
+        base = select(PaperTradeRecord).where(PaperTradeRecord.status == "closed")
+        count_stmt = select(func.count()).select_from(PaperTradeRecord).where(
+            PaperTradeRecord.status == "closed"
+        )
+        if symbol:
+            base = base.where(PaperTradeRecord.symbol == symbol)
+            count_stmt = count_stmt.where(PaperTradeRecord.symbol == symbol)
+        total = self._session.exec(count_stmt).one()
+        trades = list(
+            self._session.exec(
+                base.order_by(PaperTradeRecord.closed_at.desc())
+                .offset(offset)
+                .limit(limit)
+            ).all()
+        )
+        return trades, total
+
+    def update_trade_position(
+        self,
+        trade_id: str,
+        *,
+        entry_price: float,
+        quantity: float,
+        margin: float,
+        liquidation_price: float,
+    ) -> PaperTradeRecord:
+        """Update position after add (avg price, qty, margin)."""
+        trade = self.get_by_trade_id(trade_id)
+        if trade is None:
+            raise ValueError(f"Trade {trade_id} not found")
+        trade.entry_price = entry_price
+        trade.quantity = quantity
+        trade.margin = margin
+        trade.liquidation_price = liquidation_price
+        self._session.add(trade)
+        self._session.commit()
+        self._session.refresh(trade)
+        return trade
+
+    def update_trade_partial_close(
+        self,
+        trade_id: str,
+        *,
+        remaining_qty: float,
+        remaining_margin: float,
+    ) -> PaperTradeRecord:
+        """Update position after partial reduce."""
+        trade = self.get_by_trade_id(trade_id)
+        if trade is None:
+            raise ValueError(f"Trade {trade_id} not found")
+        trade.quantity = remaining_qty
+        trade.margin = remaining_margin
+        self._session.add(trade)
+        self._session.commit()
+        self._session.refresh(trade)
+        return trade
+
+    def update_trade_close_reason(
+        self,
+        trade_id: str,
+        *,
+        reason: str,
+    ) -> PaperTradeRecord:
+        """Set close_reason on a trade."""
+        trade = self.get_by_trade_id(trade_id)
+        if trade is None:
+            raise ValueError(f"Trade {trade_id} not found")
+        trade.close_reason = reason
+        self._session.add(trade)
+        self._session.commit()
+        self._session.refresh(trade)
+        return trade
 
 
 class ApprovalRepository:
