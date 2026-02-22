@@ -55,7 +55,7 @@ def create_app_components(
     exchange_id: str,
     database_url: str,
     anthropic_api_key: str = "",
-    llm_model: str = "anthropic/claude-sonnet-4-6",
+    llm_model: str = "anthropic/claude-opus-4-6",
     llm_model_premium: str = "anthropic/claude-opus-4-6",
     llm_temperature: float = 0.2,
     llm_max_tokens: int = 2000,
@@ -306,6 +306,7 @@ async def _run_bot(components: dict[str, Any], settings: Settings) -> None:
         loop.add_signal_handler(sig, stop.set)
 
     async with app:
+        await bot.register_commands()
         await app.start()
         scheduler.start()
         await app.updater.start_polling()

@@ -4,7 +4,7 @@ from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
@@ -162,6 +162,22 @@ class SentinelBot:
         self._approval_manager = approval_manager
         self._executor = executor
         self._data_fetcher = data_fetcher
+
+    _BOT_COMMANDS = [
+        BotCommand("status", "Account overview & latest proposals"),
+        BotCommand("run", "Trigger pipeline for all symbols"),
+        BotCommand("coin", "Detailed analysis for a symbol"),
+        BotCommand("history", "Recent trade records"),
+        BotCommand("perf", "Performance report"),
+        BotCommand("eval", "Run LLM evaluation"),
+        BotCommand("resume", "Un-pause after risk pause"),
+        BotCommand("help", "Show available commands"),
+    ]
+
+    async def register_commands(self) -> None:
+        """Register bot commands with Telegram (call after app.initialize)."""
+        if self._app is not None:
+            await self._app.bot.set_my_commands(self._BOT_COMMANDS)
 
     def build(self, *, post_init: Any = None) -> Application:
         builder = Application.builder().token(self.token)
