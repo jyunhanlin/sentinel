@@ -49,8 +49,9 @@ def format_proposal(result: PipelineResult) -> str:
         return f"Pipeline {result.status}: {result.rejection_reason or 'No proposal generated'}"
 
     p = result.proposal
-    status_emoji = {
-        "completed": "NEW",
+    is_flat = p.side.value == "flat"
+    status_label = {
+        "completed": "FLAT" if is_flat else "EXECUTED",
         "rejected": "REJECTED",
         "failed": "FAILED",
         "pending_approval": "PENDING APPROVAL",
@@ -58,7 +59,7 @@ def format_proposal(result: PipelineResult) -> str:
 
     time_str = _fmt_time(result.created_at)
     lines = [
-        f"[{status_emoji}] {p.symbol}  ({time_str})",
+        f"[{status_label}] {p.symbol}  ({time_str})",
         f"Side: {p.side.value.upper()}",
     ]
 
