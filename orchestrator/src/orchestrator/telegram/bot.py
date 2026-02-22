@@ -66,6 +66,27 @@ def _english_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+def _check_stale_sl_tp(
+    *,
+    side: str,
+    current_price: float,
+    stop_loss: float | None,
+    take_profit: list[float],
+) -> str | None:
+    """Return a human-readable reason if SL/TP would immediately trigger, else None."""
+    if side == "long":
+        if stop_loss is not None and current_price <= stop_loss:
+            return f"Price ${current_price:,.1f} already at/below SL ${stop_loss:,.1f}"
+        if take_profit and current_price >= take_profit[0]:
+            return f"Price ${current_price:,.1f} already at/above TP ${take_profit[0]:,.1f}"
+    elif side == "short":
+        if stop_loss is not None and current_price >= stop_loss:
+            return f"Price ${current_price:,.1f} already at/above SL ${stop_loss:,.1f}"
+        if take_profit and current_price <= take_profit[0]:
+            return f"Price ${current_price:,.1f} already at/below TP ${take_profit[0]:,.1f}"
+    return None
+
+
 def is_admin(chat_id: int, *, admin_ids: list[int]) -> bool:
     return chat_id in admin_ids
 
@@ -526,7 +547,7 @@ class SentinelBot:
             await query.answer("Not configured")
             return
 
-        approval = self._approval_manager.approve(approval_id)
+        approval = self._approval_manager.get(approval_id)
         if approval is None:
             await query.answer("Expired or not found")
             await query.edit_message_text("Approval expired or already handled.")
@@ -538,6 +559,39 @@ class SentinelBot:
                 current_price = await self._data_fetcher.fetch_current_price(
                     approval.proposal.symbol
                 )
+
+            # Validate SL/TP won't immediately trigger (matches exchange behavior:
+            # Binance -2021 "Order would immediately trigger")
+            stale_reason = _check_stale_sl_tp(
+                side=approval.proposal.side.value,
+                current_price=current_price,
+                stop_loss=approval.proposal.stop_loss,
+                take_profit=approval.proposal.take_profit,
+            )
+            if stale_reason:
+                self._approval_manager.reject(approval_id)
+                text = (
+                    f"━━ STALE PROPOSAL ━━\n"
+                    f"{approval.proposal.symbol}  {approval.proposal.side.value.upper()}\n\n"
+                    f"{stale_reason}\n"
+                    f"Use /run to get a fresh analysis."
+                )
+                await query.answer("Proposal is stale")
+                await query.edit_message_text(
+                    text=text, reply_markup=_translate_keyboard(),
+                )
+                if query.message:
+                    self._msg_cache.store(query.message.message_id, text)
+                logger.warning(
+                    "approval_stale",
+                    approval_id=approval_id,
+                    symbol=approval.proposal.symbol,
+                    reason=stale_reason,
+                )
+                return
+
+            # Price is valid — commit the approval
+            self._approval_manager.approve(approval_id)
 
             result = await self._executor.execute_entry(
                 approval.proposal, current_price=current_price
