@@ -145,8 +145,9 @@ class ClaudeCLIBackend(LLMBackend):
         if system_prompt:
             cmd.extend(["--system-prompt", system_prompt])
 
-        # Remove CLAUDECODE env var to avoid nested session error
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        # Remove env vars that interfere with CLI subscription auth
+        _exclude_env = {"CLAUDECODE", "ANTHROPIC_API_KEY"}
+        env = {k: v for k, v in os.environ.items() if k not in _exclude_env}
 
         start = time.monotonic()
 
@@ -169,13 +170,17 @@ class ClaudeCLIBackend(LLMBackend):
 
         if process.returncode != 0:
             error_msg = stderr.decode().strip()
+            stdout_msg = stdout.decode().strip()
             logger.error(
                 "claude_cli_failed",
                 returncode=process.returncode,
                 stderr=error_msg,
+                stdout=stdout_msg[:500],
+                cmd=" ".join(cmd),
             )
             raise RuntimeError(
-                f"Claude CLI failed (exit {process.returncode}): {error_msg}"
+                f"Claude CLI failed (exit {process.returncode}): "
+                f"{error_msg or stdout_msg[:200]}"
             )
 
         elapsed_ms = int((time.monotonic() - start) * 1000)

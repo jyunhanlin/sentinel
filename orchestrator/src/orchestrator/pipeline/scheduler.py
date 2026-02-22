@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 import structlog
@@ -14,6 +15,9 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+# Callback type: receives a PipelineResult, pushes it somewhere
+ResultCallback = Callable[[PipelineResult], Awaitable[None]]
+
 
 class PipelineScheduler:
     def __init__(
@@ -24,12 +28,14 @@ class PipelineScheduler:
         interval_minutes: int = 15,
         premium_model: str = "",
         approval_manager: ApprovalManager | None = None,
+        on_result: ResultCallback | None = None,
     ) -> None:
         self.symbols = symbols
         self.interval_minutes = interval_minutes
         self.premium_model = premium_model
         self._runner = runner
         self._approval_manager = approval_manager
+        self._on_result = on_result
         self._scheduler: AsyncIOScheduler | None = None
 
     async def run_once(
@@ -49,6 +55,11 @@ class PipelineScheduler:
                 symbol=symbol,
                 status=result.status,
             )
+            if self._on_result is not None:
+                try:
+                    await self._on_result(result)
+                except Exception:
+                    logger.exception("on_result_callback_failed", symbol=symbol)
         return results
 
     async def _run_daily_premium(self) -> None:
