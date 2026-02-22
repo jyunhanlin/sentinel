@@ -62,6 +62,12 @@ class PaperTradeRecord(SQLModel, table=True):
     exchange_order_id: str = ""
     sl_order_id: str = ""
     tp_order_id: str = ""
+    leverage: int = 1
+    margin: float = 0.0
+    liquidation_price: float = 0.0
+    close_reason: str = ""  # "sl" | "tp" | "liquidation" | "manual" | "partial_reduce"
+    stop_loss: float = 0.0
+    take_profit_json: str = "[]"  # JSON-encoded list[float]
     opened_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     closed_at: datetime | None = None
 
