@@ -239,6 +239,14 @@ class PaperEngine:
     def _check_trigger(
         self, pos: Position, current_price: float
     ) -> tuple[float, str] | None:
+        # Liquidation check (highest priority)
+        if pos.leverage > 1:
+            if pos.side == Side.LONG and current_price <= pos.liquidation_price:
+                return current_price, "liquidation"
+            if pos.side == Side.SHORT and current_price >= pos.liquidation_price:
+                return current_price, "liquidation"
+
+        # SL/TP checks
         if pos.side == Side.LONG:
             if current_price <= pos.stop_loss:
                 return pos.stop_loss, "sl"
@@ -255,7 +263,10 @@ class PaperEngine:
         close_fee = pos.quantity * exit_price * self._taker_fee_rate
         self._total_fees += close_fee
 
-        if pos.side == Side.LONG:
+        if reason == "liquidation":
+            # Total loss of margin on liquidation
+            pnl = -pos.margin
+        elif pos.side == Side.LONG:
             pnl = (exit_price - pos.entry_price) * pos.quantity
         else:
             pnl = (pos.entry_price - exit_price) * pos.quantity
@@ -267,6 +278,9 @@ class PaperEngine:
             exit_price=exit_price,
             pnl=pnl,
             fees=close_fee,
+        )
+        self._trade_repo.update_trade_close_reason(
+            trade_id=pos.trade_id, reason=reason,
         )
 
         logger.info(

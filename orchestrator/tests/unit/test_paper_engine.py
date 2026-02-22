@@ -260,3 +260,53 @@ class TestOpenPositionWithLeverage:
         proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
         with pytest.raises(ValueError, match="Insufficient margin"):
             engine.open_position(proposal, current_price=68000.0, leverage=1)
+
+
+class TestLiquidation:
+    def _make_engine(self):
+        return PaperEngine(
+            initial_equity=10000.0,
+            taker_fee_rate=0.0005,
+            position_sizer=RiskPercentSizer(),
+            trade_repo=MagicMock(),
+            snapshot_repo=MagicMock(),
+            maintenance_margin_rate=0.5,
+        )
+
+    def test_liquidation_triggers_before_sl_long(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+        # Liq price ~61540, SL=67000. Price crashes below liq
+        closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=61000.0)
+        assert len(closed) == 1
+        assert closed[0].reason == "liquidation"
+
+    def test_sl_triggers_when_above_liq_long(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        engine.open_position(proposal, current_price=68000.0, leverage=10)
+        # Price hits SL but above liq
+        closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=66500.0)
+        assert len(closed) == 1
+        assert closed[0].reason == "sl"
+
+    def test_liquidation_short(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(
+            side=Side.SHORT, stop_loss=70000.0, take_profit=[65000.0],
+        )
+        engine.open_position(proposal, current_price=68000.0, leverage=10)
+        # Liq price ~74460, push above
+        closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=75000.0)
+        assert len(closed) == 1
+        assert closed[0].reason == "liquidation"
+
+    def test_liquidation_pnl_is_negative_margin(self):
+        engine = self._make_engine()
+        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+        margin = pos.margin
+        closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=61000.0)
+        assert len(closed) == 1
+        assert closed[0].pnl == pytest.approx(-margin)
