@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -85,6 +86,24 @@ def _check_stale_sl_tp(
         if take_profit and current_price <= take_profit[0]:
             return f"Price ${current_price:,.1f} already at/below TP ${take_profit[0]:,.1f}"
     return None
+
+
+async def _safe_callback_reply(
+    query: CallbackQuery,
+    *,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
+    """Answer callback + edit message, tolerating expired/duplicate queries."""
+    try:
+        await query.answer()
+    except BadRequest:
+        pass  # callback query expired (e.g. duplicate click)
+    try:
+        await query.edit_message_text(text=text, reply_markup=reply_markup)
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            raise
 
 
 def is_admin(chat_id: int, *, admin_ids: list[int]) -> bool:
@@ -522,12 +541,12 @@ class SentinelBot:
                 translated = await to_chinese(original, self._llm_client)
             finally:
                 structlog.contextvars.unbind_contextvars("source")
-            await query.answer()
             rows = []
             if has_approval_buttons:
                 rows.append(approval_row)
             rows.append([InlineKeyboardButton("Translate to en", callback_data="translate:en")])
-            await query.edit_message_text(
+            await _safe_callback_reply(
+                query,
                 text=translated,
                 reply_markup=InlineKeyboardMarkup(rows),
             )
@@ -536,11 +555,11 @@ class SentinelBot:
             if has_approval_buttons:
                 rows.append(approval_row)
             rows.append([InlineKeyboardButton("Translate to zh-TW", callback_data="translate:zh")])
-            await query.edit_message_text(
+            await _safe_callback_reply(
+                query,
                 text=original,
                 reply_markup=InlineKeyboardMarkup(rows),
             )
-            await query.answer()
 
     async def _handle_approve(self, query: CallbackQuery, approval_id: str) -> None:
         if self._approval_manager is None or self._executor is None:
