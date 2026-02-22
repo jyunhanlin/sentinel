@@ -545,6 +545,23 @@ class SentinelBot:
 
     # --- Callback router ---
 
+    # Dispatch table: action → (min_parts, handler)
+    # Each handler receives (query, parts[1:]) for uniform argument passing.
+    _CALLBACK_DISPATCH: dict[str, tuple[int, str]] = {
+        "approve":          (2, "_handle_approve"),
+        "reject":           (2, "_handle_reject"),
+        "translate":        (2, "_handle_translate"),
+        "confirm_leverage": (3, "_handle_confirm_leverage"),
+        "close":            (2, "_handle_close"),
+        "confirm_close":    (2, "_handle_confirm_close"),
+        "reduce":           (2, "_handle_reduce"),
+        "confirm_reduce":   (3, "_handle_confirm_reduce"),
+        "add":              (2, "_handle_add"),
+        "confirm_add":      (3, "_handle_confirm_add"),
+        "cancel":           (1, "_handle_cancel"),
+        "history":          (3, "_handle_history_callback"),
+    }
+
     async def _callback_router(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
@@ -560,32 +577,16 @@ class SentinelBot:
         parts = data.split(":")
         action = parts[0] if parts else ""
 
-        if action == "approve" and len(parts) >= 2:
-            await self._handle_approve(query, parts[1])
-        elif action == "reject" and len(parts) >= 2:
-            await self._handle_reject(query, parts[1])
-        elif action == "translate" and len(parts) >= 2:
-            await self._handle_translate(query, parts[1])
-        elif action == "confirm_leverage" and len(parts) >= 3:
-            await self._handle_confirm_leverage(query, parts[1], int(parts[2]))
-        elif action == "close" and len(parts) >= 2:
-            await self._handle_close(query, parts[1])
-        elif action == "confirm_close" and len(parts) >= 2:
-            await self._handle_confirm_close(query, parts[1])
-        elif action == "reduce" and len(parts) >= 2:
-            await self._handle_reduce(query, parts[1])
-        elif action == "confirm_reduce" and len(parts) >= 3:
-            await self._handle_confirm_reduce(query, parts[1], float(parts[2]))
-        elif action == "add" and len(parts) >= 2:
-            await self._handle_add(query, parts[1])
-        elif action == "confirm_add" and len(parts) >= 3:
-            await self._handle_confirm_add(query, parts[1], float(parts[2]))
-        elif action == "cancel":
-            await _safe_callback_reply(query, text="Cancelled.")
-        elif action == "history" and len(parts) >= 3:
-            await self._handle_history_callback(query, parts[1], parts[2])
-        else:
+        entry = self._CALLBACK_DISPATCH.get(action)
+        if entry is None or len(parts) < entry[0]:
             await query.answer("Unknown action")
+            return
+
+        handler = getattr(self, entry[1])
+        await handler(query, *parts[1:])
+
+    async def _handle_cancel(self, query: CallbackQuery, *_args: str) -> None:
+        await _safe_callback_reply(query, text="Cancelled.")
 
     async def _handle_translate(self, query: CallbackQuery, lang: str) -> None:
         """Toggle message between English and Chinese."""
@@ -678,8 +679,9 @@ class SentinelBot:
         await _safe_callback_reply(query, text=text, reply_markup=keyboard)
 
     async def _handle_confirm_leverage(
-        self, query: CallbackQuery, approval_id: str, leverage: int,
+        self, query: CallbackQuery, approval_id: str, leverage_str: str, *_args: str,
     ) -> None:
+        leverage = int(leverage_str)
         """Execute trade with selected leverage."""
         if self._approval_manager is None or self._executor is None:
             await query.answer("Not configured")
@@ -877,8 +879,9 @@ class SentinelBot:
         await _safe_callback_reply(query, text=text, reply_markup=keyboard)
 
     async def _handle_confirm_reduce(
-        self, query: CallbackQuery, trade_id: str, pct: float,
+        self, query: CallbackQuery, trade_id: str, pct_str: str, *_args: str,
     ) -> None:
+        pct = float(pct_str)
         if self._paper_engine is None or self._data_fetcher is None:
             await query.answer("Not configured")
             return
@@ -926,8 +929,9 @@ class SentinelBot:
         await _safe_callback_reply(query, text=text, reply_markup=keyboard)
 
     async def _handle_confirm_add(
-        self, query: CallbackQuery, trade_id: str, risk_pct: float,
+        self, query: CallbackQuery, trade_id: str, risk_pct_str: str, *_args: str,
     ) -> None:
+        risk_pct = float(risk_pct_str)
         if self._paper_engine is None or self._data_fetcher is None:
             await query.answer("Not configured")
             return
@@ -952,8 +956,11 @@ class SentinelBot:
             await query.answer(f"Error: {e}")
 
     async def _handle_history_callback(
-        self, query: CallbackQuery, action: str, value: str,
+        self, query: CallbackQuery, action: str, value: str, *extra: str,
     ) -> None:
+        # Rejoin extra parts for symbols with colons (e.g. "BTC/USDT:USDT")
+        if extra:
+            value = ":".join([value, *extra])
         """Handle history pagination callbacks (history:page:N or history:filter:SYMBOL)."""
         if self._trade_repo is None:
             await query.answer("Not configured")
