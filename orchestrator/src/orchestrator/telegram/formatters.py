@@ -38,7 +38,7 @@ def _degraded_labels(result: PipelineResult) -> list[str]:
 
 def format_welcome() -> str:
     return (
-        "Welcome to Sentinel Orchestrator!\n\n"
+        "Welcome to Sentinel!\n\n"
         "I analyze crypto markets using multiple AI models and generate "
         "trade proposals with risk management.\n\n"
         "Use /help to see available commands."
