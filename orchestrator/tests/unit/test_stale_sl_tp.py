@@ -1,5 +1,3 @@
-import pytest
-
 from orchestrator.telegram.bot import _check_stale_sl_tp
 
 

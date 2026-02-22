@@ -3,7 +3,6 @@ import json
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from orchestrator.storage.models import PaperTradeRecord
 from orchestrator.storage.repository import PaperTradeRepository
 
 

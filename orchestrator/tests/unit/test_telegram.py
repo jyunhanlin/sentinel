@@ -1002,7 +1002,10 @@ class TestPerfHandler:
 
         mock_snapshot_repo = MagicMock()
         mock_snapshot_repo.get_latest.return_value = mock_snapshot
-        bot = SentinelBot(token="test-token", admin_chat_ids=[123], snapshot_repo=mock_snapshot_repo)
+        bot = SentinelBot(
+            token="test-token", admin_chat_ids=[123],
+            snapshot_repo=mock_snapshot_repo,
+        )
 
         update = MagicMock()
         update.effective_chat.id = 123
@@ -1019,7 +1022,10 @@ class TestPerfHandler:
         """The /perf command should say no data when no snapshots exist."""
         mock_snapshot_repo = MagicMock()
         mock_snapshot_repo.get_latest.return_value = None
-        bot = SentinelBot(token="test-token", admin_chat_ids=[123], snapshot_repo=mock_snapshot_repo)
+        bot = SentinelBot(
+            token="test-token", admin_chat_ids=[123],
+            snapshot_repo=mock_snapshot_repo,
+        )
 
         update = MagicMock()
         update.effective_chat.id = 123

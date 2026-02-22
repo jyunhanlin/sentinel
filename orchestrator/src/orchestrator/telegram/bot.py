@@ -17,7 +17,6 @@ from orchestrator.telegram.formatters import (
     format_eval_report,
     format_execution_result,
     format_help,
-    format_history,
     format_pending_approval,
     format_perf_report,
     format_proposal,
@@ -219,7 +218,12 @@ class SentinelBot:
         if self._app is None:
             return
         for chat_id in self.admin_chat_ids:
-            if result.status == "pending_approval" and result.approval_id and self._approval_manager:
+            is_pending = (
+                result.status == "pending_approval"
+                and result.approval_id
+                and self._approval_manager
+            )
+            if is_pending:
                 approval = self._approval_manager.get(result.approval_id)
                 if approval:
                     await self.push_pending_approval(chat_id, approval)
@@ -338,7 +342,7 @@ class SentinelBot:
                         ],
                     ])
                     if update.message:
-                        sent = await update.message.reply_text(
+                        await update.message.reply_text(
                             f"{pos.symbol} actions:", reply_markup=keyboard,
                         )
                 return
@@ -886,7 +890,8 @@ class SentinelBot:
 
         from orchestrator.telegram.formatters import format_position_card
 
-        text = f"━━ REDUCE POSITION ━━\n\n{format_position_card(info)}\n\nSelect percentage to close:"
+        card = format_position_card(info)
+        text = f"━━ REDUCE POSITION ━━\n\n{card}\n\nSelect percentage to close:"
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("25%", callback_data=f"confirm_reduce:{trade_id}:25"),
@@ -1005,7 +1010,6 @@ class SentinelBot:
         text = format_history_paginated(trades, page=page, total_pages=total_pages)
 
         nav_buttons: list[InlineKeyboardButton] = []
-        filter_prefix = f"history:filter:{symbol_filter}" if symbol_filter else ""
         if page > 1:
             prev_data = f"history:page:{page - 1}"
             nav_buttons.append(InlineKeyboardButton("Prev", callback_data=prev_data))

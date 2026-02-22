@@ -276,7 +276,7 @@ class TestLiquidation:
     def test_liquidation_triggers_before_sl_long(self):
         engine = self._make_engine()
         proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
-        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+        engine.open_position(proposal, current_price=68000.0, leverage=10)
         # Liq price ~61540, SL=67000. Price crashes below liq
         closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=61000.0)
         assert len(closed) == 1
@@ -372,7 +372,7 @@ class TestManualOperations:
         proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
 
-        result = engine.reduce_position(
+        engine.reduce_position(
             trade_id=pos.trade_id, pct=100.0, current_price=69000.0,
         )
         assert len(engine.get_open_positions()) == 0

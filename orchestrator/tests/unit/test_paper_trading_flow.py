@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from orchestrator.exchange.paper_engine import PaperEngine
 from orchestrator.models import EntryOrder, Side, TradeProposal
 from orchestrator.risk.position_sizer import RiskPercentSizer
@@ -149,6 +151,3 @@ class TestFullPaperTradingFlow:
         # PnL% ~1%, but ROE% ~10% due to 10x leverage
         assert info["pnl_pct"] == pytest.approx(1.0, abs=0.1)
         assert info["roe_pct"] == pytest.approx(10.0, abs=1.0)
-
-
-import pytest

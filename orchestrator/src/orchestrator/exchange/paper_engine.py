@@ -127,7 +127,8 @@ class PaperEngine:
         margin = self.calculate_margin(quantity=quantity, price=current_price, leverage=leverage)
         if margin > self.available_balance:
             raise ValueError(
-                f"Insufficient margin: need ${margin:,.2f}, available ${self.available_balance:,.2f}"
+                f"Insufficient margin: need ${margin:,.2f}, "
+                f"available ${self.available_balance:,.2f}"
             )
 
         liquidation_price = self.calculate_liquidation_price(
