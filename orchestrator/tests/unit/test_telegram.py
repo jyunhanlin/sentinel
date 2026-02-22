@@ -925,45 +925,29 @@ class TestPerfHandler:
 
 
 class TestTranslation:
-    def test_to_chinese_labels(self):
+    @pytest.mark.asyncio
+    async def test_to_chinese_calls_llm(self):
         from orchestrator.telegram.translations import to_chinese
 
-        text = "[NEW] BTC/USDT:USDT  (02/22 11:00)\nSide: LONG\nEntry: market\nRisk: 1.5%"
-        zh = to_chinese(text)
-        assert "新提案" in zh
-        assert "方向：" in zh
-        assert "進場：" in zh
-        assert "風險：" in zh
-        # Original values preserved
-        assert "BTC/USDT:USDT" in zh
-        assert "LONG" in zh
+        mock_client = MagicMock()
+        mock_client.call = AsyncMock(return_value=MagicMock(content="[新提案] BTC\n方向：LONG"))
 
-    def test_to_chinese_status(self):
-        from orchestrator.telegram.translations import to_chinese
-
-        text = "Latest pipeline results:\n─────────────────────\nBTC — LONG [completed]"
-        zh = to_chinese(text)
-        assert "最新 Pipeline 結果" in zh
-
-    def test_to_chinese_perf(self):
-        from orchestrator.telegram.translations import to_chinese
-
-        text = "Performance Report\n─────\nWin Rate: 60%\nSharpe Ratio: 1.2"
-        zh = to_chinese(text)
-        assert "績效報告" in zh
-        assert "勝率" in zh
-
-    def test_to_chinese_passthrough(self):
-        from orchestrator.telegram.translations import to_chinese
-
-        text = "BTC/USDT:USDT 95000.0"
-        assert to_chinese(text) == text  # No labels to translate
+        result = await to_chinese("[NEW] BTC\nSide: LONG", mock_client)
+        assert result == "[新提案] BTC\n方向：LONG"
+        mock_client.call.assert_awaited_once()
+        call_args = mock_client.call.call_args
+        messages = call_args.kwargs.get("messages") or call_args[0][0]
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert "[NEW] BTC" in messages[1]["content"]
 
 
 class TestTranslateCallback:
     @pytest.mark.asyncio
     async def test_translate_to_chinese(self):
-        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        mock_llm = MagicMock()
+        mock_llm.call = AsyncMock(return_value=MagicMock(content="[新提案] BTC\n方向：LONG"))
+        bot = SentinelBot(token="t", admin_chat_ids=[123], llm_client=mock_llm)
         bot._msg_cache.store(42, "[NEW] BTC\nSide: LONG")
 
         query = MagicMock()
@@ -982,7 +966,7 @@ class TestTranslateCallback:
         await bot._callback_router(update, context)
         edited_text = query.edit_message_text.call_args[1]["text"]
         assert "新提案" in edited_text
-        assert "方向：" in edited_text
+        mock_llm.call.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_translate_back_to_english(self):
@@ -1006,3 +990,25 @@ class TestTranslateCallback:
         await bot._callback_router(update, context)
         edited_text = query.edit_message_text.call_args[1]["text"]
         assert edited_text == original
+
+    @pytest.mark.asyncio
+    async def test_translate_no_llm_client(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])  # no llm_client
+        bot._msg_cache.store(42, "[NEW] BTC")
+
+        query = MagicMock()
+        query.data = "translate:zh"
+        query.message.message_id = 42
+        query.message.reply_markup = None
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        context = MagicMock()
+
+        await bot._callback_router(update, context)
+        query.answer.assert_awaited_with("Translation not available")
+        query.edit_message_text.assert_not_called()

@@ -197,6 +197,7 @@ def create_app_components(
         executor=executor,
         data_fetcher=data_fetcher,
         eval_runner=eval_runner,
+        llm_client=llm_client,
     )
 
     return {

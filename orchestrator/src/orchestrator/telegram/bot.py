@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from orchestrator.exchange.data_fetcher import DataFetcher
     from orchestrator.exchange.paper_engine import CloseResult, PaperEngine
     from orchestrator.execution.executor import OrderExecutor
+    from orchestrator.llm.client import LLMClient
     from orchestrator.pipeline.runner import PipelineResult
     from orchestrator.pipeline.scheduler import PipelineScheduler
     from orchestrator.risk.checker import RiskResult
@@ -55,13 +56,13 @@ _TRANSLATE_CACHE_MAX = 200
 
 def _translate_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("翻譯", callback_data="translate:zh")]
+        [InlineKeyboardButton("translate", callback_data="translate:zh")]
     ])
 
 
 def _english_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("EN", callback_data="translate:en")]
+        [InlineKeyboardButton("translate", callback_data="translate:en")]
     ])
 
 
@@ -102,10 +103,12 @@ class SentinelBot:
         approval_manager: ApprovalManager | None = None,
         executor: OrderExecutor | None = None,
         data_fetcher: DataFetcher | None = None,
+        llm_client: LLMClient | None = None,
     ) -> None:
         self.token = token
         self.admin_chat_ids = admin_chat_ids
         self._premium_model = premium_model
+        self._llm_client = llm_client
         self._app: Application | None = None
         self._scheduler = scheduler
         self._latest_results: dict[str, object] = {}  # symbol → PipelineResult
@@ -413,7 +416,7 @@ class SentinelBot:
                     "Reject", callback_data=f"reject:{approval.approval_id}"
                 ),
             ],
-            [InlineKeyboardButton("翻譯", callback_data="translate:zh")],
+            [InlineKeyboardButton("translate", callback_data="translate:zh")],
         ])
         msg = await self._app.bot.send_message(
             chat_id=chat_id, text=text, reply_markup=keyboard,
@@ -479,7 +482,11 @@ class SentinelBot:
                         break
 
         if lang == "zh":
-            translated = to_chinese(original)
+            if self._llm_client is None:
+                await query.answer("Translation not available")
+                return
+            await query.answer("Translating...")
+            translated = await to_chinese(original, self._llm_client)
             rows = []
             if has_approval_buttons:
                 rows.append(approval_row)
@@ -492,12 +499,12 @@ class SentinelBot:
             rows = []
             if has_approval_buttons:
                 rows.append(approval_row)
-            rows.append([InlineKeyboardButton("翻譯", callback_data="translate:zh")])
+            rows.append([InlineKeyboardButton("translate", callback_data="translate:zh")])
             await query.edit_message_text(
                 text=original,
                 reply_markup=InlineKeyboardMarkup(rows),
             )
-        await query.answer()
+            await query.answer()
 
     async def _handle_approve(self, query: CallbackQuery, approval_id: str) -> None:
         if self._approval_manager is None or self._executor is None:
