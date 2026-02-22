@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     paper_initial_equity: float = 10000.0
     paper_taker_fee_rate: float = 0.0005   # 0.05%
     paper_maker_fee_rate: float = 0.0002   # 0.02%
+    paper_default_leverage: int = 10
+    paper_maintenance_margin_rate: float = 0.5  # %
+    paper_leverage_options: list[int] = Field(default=[5, 10, 20, 50])
 
     # Semi-auto Trading
     trading_mode: str = "paper"                    # "paper" | "live"

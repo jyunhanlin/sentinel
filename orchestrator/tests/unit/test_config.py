@@ -75,3 +75,13 @@ def test_settings_paper_trading_defaults(monkeypatch):
     assert settings.paper_initial_equity == 10000.0
     assert settings.paper_taker_fee_rate == 0.0005
     assert settings.paper_maker_fee_rate == 0.0002
+
+
+def test_paper_leverage_defaults(monkeypatch):
+    """New leverage config fields have sensible defaults."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test")
+    monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_IDS", "[123]")
+    s = Settings()
+    assert s.paper_default_leverage == 10
+    assert s.paper_maintenance_margin_rate == 0.5
+    assert s.paper_leverage_options == [5, 10, 20, 50]
