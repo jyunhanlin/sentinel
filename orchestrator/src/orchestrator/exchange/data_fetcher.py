@@ -17,6 +17,12 @@ class MarketSnapshot(BaseModel, frozen=True):
     ohlcv: list[list[float]]
 
 
+class TickerSummary(BaseModel, frozen=True):
+    symbol: str
+    price: float
+    change_24h_pct: float
+
+
 class DataFetcher:
     def __init__(self, client: ExchangeClient) -> None:
         self._client = client
@@ -39,6 +45,15 @@ class DataFetcher:
         """Fetch the latest price for a symbol."""
         ticker = await self._client.fetch_ticker(symbol)
         return ticker.get("last", 0.0)
+
+    async def fetch_ticker_summary(self, symbol: str) -> TickerSummary:
+        """Fetch price + 24h change % for price board display."""
+        ticker = await self._client.fetch_ticker(symbol)
+        return TickerSummary(
+            symbol=symbol,
+            price=ticker.get("last", 0.0),
+            change_24h_pct=ticker.get("percentage", 0.0) or 0.0,
+        )
 
     async def _parallel_fetch(
         self, symbol: str, timeframe: str, limit: int
