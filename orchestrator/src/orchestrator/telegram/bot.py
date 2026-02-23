@@ -802,7 +802,7 @@ class SentinelBot:
         text = (
             f"━━ CONFIRM ORDER ━━\n"
             f"{p.symbol}  {side_str} · {leverage}x\n\n"
-            f"Entry: ~${current_price:,.1f} | Qty: {qty:.4f}\n"
+            f"Now: ${current_price:,.1f} | Qty: {qty:.4f}\n"
             f"Margin: ${margin:,.2f} | Liq: ~${liq:,.1f}\n"
             f"SL: ${p.stop_loss:,.1f} | TP: {tp_str}\n"
         )
@@ -961,7 +961,11 @@ class SentinelBot:
 
         from orchestrator.telegram.formatters import format_position_card
 
-        text = f"━━ CLOSE POSITION? ━━\n\n{format_position_card(info)}"
+        text = (
+            f"━━ CLOSE POSITION? ━━\n"
+            f"Now: ${current_price:,.1f}\n\n"
+            f"{format_position_card(info)}"
+        )
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("Confirm Close", callback_data=f"confirm_close:{trade_id}"),
@@ -1049,7 +1053,8 @@ class SentinelBot:
         text = (
             f"━━ CONFIRM REDUCE ━━\n"
             f"{pos.symbol}  {side_str} {pos.leverage}x\n\n"
-            f"Close {pct:.0f}%: {close_qty:.4f} at ~${current_price:,.1f}\n"
+            f"Now: ${current_price:,.1f}\n"
+            f"Close {pct:.0f}%: {close_qty:.4f}\n"
             f"Est. PnL: {pnl_sign}${est_pnl:,.2f}"
         )
         keyboard = InlineKeyboardMarkup([
@@ -1147,7 +1152,7 @@ class SentinelBot:
         text = (
             f"━━ CONFIRM ADD ━━\n"
             f"{pos.symbol}  {side_str} {pos.leverage}x\n\n"
-            f"Current Price: ~${current_price:,.1f}\n"
+            f"Now: ${current_price:,.1f}\n"
             f"Add Qty: {add_qty:.4f} | Add Margin: ${add_margin:,.2f}\n"
             f"Risk: {risk_pct}%"
         )
