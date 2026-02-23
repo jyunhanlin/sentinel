@@ -664,12 +664,17 @@ class TestStatusWithPositions:
         update = _make_update(123)
         await bot._status_handler(update, _make_context())
 
-        # Should have sent a message with position info
-        assert update.message.reply_text.call_count >= 1
-        # Check that the account overview or position card was sent
+        # 1 overview + 1 position card = 2 messages
+        assert update.message.reply_text.call_count == 2
         calls = update.message.reply_text.call_args_list
-        all_text = " ".join(str(c) for c in calls)
-        assert "BTC" in all_text or "LONG" in all_text or "Margin" in all_text
+        # First call: overview (no reply_markup)
+        overview_text = calls[0][0][0]
+        assert "Account Overview" in overview_text
+        assert "Open Positions: 1" in overview_text
+        # Second call: position card with action buttons
+        card_text = calls[1][0][0]
+        assert "BTC" in card_text
+        assert calls[1][1]["reply_markup"] is not None
 
     @pytest.mark.asyncio
     async def test_status_no_positions_shows_basic(self):
@@ -1159,10 +1164,11 @@ class TestLeverageFormatting:
             available=7320.0,
             used_margin=2680.0,
             initial_equity=10000.0,
-            position_cards=["...card..."],
+            position_count=1,
         )
         assert "Available" in text
         assert "Used Margin" in text
+        assert "Open Positions: 1" in text
 
     def test_format_history_paginated(self):
         trade = MagicMock(

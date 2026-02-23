@@ -323,11 +323,11 @@ class SentinelBot:
                     available=self._paper_engine.available_balance,
                     used_margin=self._paper_engine.used_margin,
                     initial_equity=self._paper_engine._initial_equity,
-                    position_cards=position_cards,
+                    position_count=len(position_cards),
                 )
-                # Send overview, then per-position messages with action buttons
+                # Send overview header, then each position card with action buttons
                 await self._reply(update, overview)
-                for pos in positions:
+                for pos, card in zip(positions, position_cards):
                     keyboard = InlineKeyboardMarkup([
                         [
                             InlineKeyboardButton(
@@ -343,7 +343,7 @@ class SentinelBot:
                     ])
                     if update.message:
                         await update.message.reply_text(
-                            f"{pos.symbol} actions:", reply_markup=keyboard,
+                            card, reply_markup=keyboard,
                         )
                 return
 

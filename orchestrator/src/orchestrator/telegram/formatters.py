@@ -384,7 +384,7 @@ def format_account_overview(
     available: float,
     used_margin: float,
     initial_equity: float,
-    position_cards: list[str],
+    position_count: int = 0,
 ) -> str:
     """Format account overview with margin info."""
     total_pnl = equity - initial_equity
@@ -398,10 +398,8 @@ def format_account_overview(
         f"Used Margin: ${used_margin:,.2f}",
     ]
 
-    if position_cards:
-        lines.append(f"\n━━ Open Positions ({len(position_cards)}) ━━")
-        for card in position_cards:
-            lines.append(f"\n{card}")
+    if position_count > 0:
+        lines.append(f"\nOpen Positions: {position_count}")
 
     return "\n".join(lines)
 
