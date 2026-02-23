@@ -13,6 +13,7 @@ from orchestrator.pipeline.runner import PipelineResult, PipelineRunner
 
 if TYPE_CHECKING:
     from orchestrator.approval.manager import ApprovalManager
+    from orchestrator.exchange.price_monitor import PriceMonitor
 
 logger = structlog.get_logger(__name__)
 
@@ -31,6 +32,8 @@ class PipelineScheduler:
         premium_model: str = "",
         approval_manager: ApprovalManager | None = None,
         on_result: ResultCallback | None = None,
+        price_monitor: PriceMonitor | None = None,
+        price_monitor_interval_seconds: int = 60,
     ) -> None:
         self.symbols = symbols
         self.interval_minutes = interval_minutes
@@ -39,6 +42,8 @@ class PipelineScheduler:
         self._runner = runner
         self._approval_manager = approval_manager
         self._on_result = on_result
+        self._price_monitor = price_monitor
+        self._price_monitor_interval = price_monitor_interval_seconds
         self._scheduler: AsyncIOScheduler | None = None
 
     async def run_once(
@@ -100,6 +105,16 @@ class PipelineScheduler:
                 trigger=IntervalTrigger(minutes=1),
                 id="approval_expiry",
                 name="Approval Expiry Check",
+                replace_existing=True,
+            )
+
+        # Price monitor — lightweight SL/TP check
+        if self._price_monitor is not None:
+            self._scheduler.add_job(
+                self._price_monitor.check,
+                trigger=IntervalTrigger(seconds=self._price_monitor_interval),
+                id="price_monitor",
+                name="Price Monitor (SL/TP/Liq)",
                 replace_existing=True,
             )
 
