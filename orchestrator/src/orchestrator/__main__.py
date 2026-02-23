@@ -79,6 +79,9 @@ def create_app_components(
     trading_mode: str = "paper",
     approval_timeout_minutes: int = 15,
     price_deviation_threshold: float = 0.01,
+    # Price Monitor
+    price_monitor_interval_seconds: int = 60,
+    price_monitor_enabled: bool = True,
 ) -> dict[str, Any]:
     # Database
     db_engine = create_db_engine(database_url)
@@ -136,6 +139,16 @@ def create_app_components(
     )
     paper_engine.rebuild_from_db()
 
+    # Price Monitor
+    from orchestrator.exchange.price_monitor import PriceMonitor
+
+    price_monitor: PriceMonitor | None = None
+    if price_monitor_enabled:
+        price_monitor = PriceMonitor(
+            paper_engine=paper_engine,
+            data_fetcher=data_fetcher,
+        )
+
     # Approval & Execution (M4)
     approval_repo = ApprovalRepository(session)
     approval_manager = ApprovalManager(
@@ -175,6 +188,8 @@ def create_app_components(
         default_model=llm_model,
         premium_model=llm_model_premium,
         approval_manager=approval_manager,
+        price_monitor=price_monitor,
+        price_monitor_interval_seconds=price_monitor_interval_seconds,
     )
 
     # Eval
@@ -214,6 +229,7 @@ def create_app_components(
         "snapshot_repo": account_snapshot_repo,
         "approval_manager": approval_manager,
         "executor": executor,
+        "price_monitor": price_monitor,
     }
 
 
@@ -244,6 +260,8 @@ def _build_components(settings: Settings) -> dict[str, Any]:
         trading_mode=settings.trading_mode,
         approval_timeout_minutes=settings.approval_timeout_minutes,
         price_deviation_threshold=settings.price_deviation_threshold,
+        price_monitor_interval_seconds=settings.price_monitor_interval_seconds,
+        price_monitor_enabled=settings.price_monitor_enabled,
     )
 
 
@@ -297,6 +315,11 @@ async def _run_bot(components: dict[str, Any], settings: Settings) -> None:
 
     # Wire scheduler -> bot notification
     scheduler._on_result = bot.push_to_admins_with_approval
+
+    # Wire price monitor -> bot notification
+    price_monitor = components.get("price_monitor")
+    if price_monitor is not None:
+        price_monitor._on_close = bot.push_close_report
 
     app = bot.build()
     stop = asyncio.Event()

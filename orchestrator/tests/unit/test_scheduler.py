@@ -154,3 +154,36 @@ class TestSchedulerLifecycle:
             runner=runner, symbols=["BTC/USDT:USDT"], interval_minutes=15,
         )
         scheduler.stop()  # Should not raise
+
+
+class TestPriceMonitorJob:
+    def test_start_adds_price_monitor_job(self):
+        runner = MagicMock()
+        monitor = AsyncMock()
+        scheduler = PipelineScheduler(
+            runner=runner,
+            symbols=["BTC/USDT:USDT"],
+            price_monitor=monitor,
+            price_monitor_interval_seconds=30,
+        )
+        with patch("orchestrator.pipeline.scheduler.AsyncIOScheduler") as mock_sched:
+            mock_instance = MagicMock()
+            mock_sched.return_value = mock_instance
+            scheduler.start()
+
+            job_ids = [call.kwargs["id"] for call in mock_instance.add_job.call_args_list]
+            assert "price_monitor" in job_ids
+
+    def test_start_skips_monitor_when_none(self):
+        runner = MagicMock()
+        scheduler = PipelineScheduler(
+            runner=runner,
+            symbols=["BTC/USDT:USDT"],
+        )
+        with patch("orchestrator.pipeline.scheduler.AsyncIOScheduler") as mock_sched:
+            mock_instance = MagicMock()
+            mock_sched.return_value = mock_instance
+            scheduler.start()
+
+            job_ids = [call.kwargs.get("id", "") for call in mock_instance.add_job.call_args_list]
+            assert "price_monitor" not in job_ids

@@ -85,3 +85,11 @@ def test_paper_leverage_defaults(monkeypatch):
     assert s.paper_default_leverage == 10
     assert s.paper_maintenance_margin_rate == 0.5
     assert s.paper_leverage_options == [5, 10, 20, 50]
+
+
+def test_price_monitor_defaults(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test")
+    monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_IDS", "[123]")
+    s = Settings()
+    assert s.price_monitor_interval_seconds == 60
+    assert s.price_monitor_enabled is True
