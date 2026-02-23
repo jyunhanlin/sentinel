@@ -358,11 +358,12 @@ git commit -m "feat: integrate PriceMonitor as APScheduler job in PipelineSchedu
 
 ---
 
-### Task 4: Wire PriceMonitor in App Bootstrap
+### Task 4: Wire PriceMonitor in App Bootstrap + Remove Duplicate check_sl_tp
 
 **Files:**
 - Modify: `orchestrator/src/orchestrator/__main__.py:51-217, 294-320`
-- Test: manual verification (integration)
+- Modify: `orchestrator/src/orchestrator/pipeline/runner.py:87-94` (remove `check_sl_tp` call)
+- Test: `orchestrator/tests/unit/test_runner.py` (update existing tests)
 
 **Step 1: Update `create_app_components`**
 
@@ -432,16 +433,41 @@ In `_run_bot()` (around line 299), wire the close callback:
         price_monitor._on_close = bot.push_close_report
 ```
 
-**Step 4: Verify**
+**Step 4: Remove `check_sl_tp` from Pipeline Runner**
+
+SL/TP checking is now the sole responsibility of PriceMonitor. Remove the duplicate from `runner.py:87-94`:
+
+Remove these lines from `execute()` method:
+
+```python
+            # Step 2: Check SL/TP on existing positions  ← DELETE
+            close_results: list[CloseResult] = []         ← DELETE
+            if self._paper_engine is not None:             ← DELETE
+                close_results = self._paper_engine.check_sl_tp(  ← DELETE
+                    symbol=symbol, current_price=snapshot.current_price  ← DELETE
+                )                                          ← DELETE
+                for cr in close_results:                   ← DELETE
+                    logger.info("position_closed_sltp", trade_id=cr.trade_id, reason=cr.reason)  ← DELETE
+```
+
+Also remove `close_results` from `PipelineResult` construction if it's passed there, and remove the `CloseResult` import if no longer used.
+
+Update step comments: renumber "Step 3" → "Step 2", "Step 4" → "Step 3", etc.
+
+**Step 5: Update runner tests**
+
+Remove any tests that assert `check_sl_tp` is called during pipeline execution. The pipeline should no longer be responsible for SL/TP checking.
+
+**Step 6: Verify**
 
 Run: `cd orchestrator && uv run pytest tests/unit/ -v --tb=short`
-Expected: All PASS (no new tests needed, just wiring)
+Expected: All PASS
 
-**Step 5: Commit**
+**Step 7: Commit**
 
 ```bash
-git add orchestrator/src/orchestrator/__main__.py
-git commit -m "feat: wire PriceMonitor into app bootstrap and bot close notification"
+git add orchestrator/src/orchestrator/__main__.py orchestrator/src/orchestrator/pipeline/runner.py orchestrator/tests/unit/
+git commit -m "feat: wire PriceMonitor into app bootstrap, remove check_sl_tp from pipeline runner"
 ```
 
 ---
