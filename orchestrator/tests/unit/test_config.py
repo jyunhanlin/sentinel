@@ -91,5 +91,5 @@ def test_price_monitor_defaults(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test")
     monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_IDS", "[123]")
     s = Settings()
-    assert s.price_monitor_interval_seconds == 60
+    assert s.price_monitor_interval_seconds == 300
     assert s.price_monitor_enabled is True
