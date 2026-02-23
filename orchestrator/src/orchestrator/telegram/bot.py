@@ -162,6 +162,7 @@ class SentinelBot:
         self._executor = executor
         self._data_fetcher = data_fetcher
         self._leverage_options: list[int] = [5, 10, 20, 50]
+        self._price_board_msg_ids: dict[int, int] = {}  # chat_id → message_id
 
     _BOT_COMMANDS = [
         BotCommand("status", "Account overview & latest proposals"),
@@ -255,6 +256,39 @@ class SentinelBot:
                 chat_id=chat_id, text=msg, reply_markup=_translate_keyboard(),
             )
             self._msg_cache.store(sent.message_id, msg)
+
+    async def update_price_board(self, summaries: list) -> None:
+        """Update or create the pinned price board message in all admin chats."""
+        if self._app is None:
+            return
+
+        from orchestrator.telegram.formatters import format_price_board
+
+        text = format_price_board(summaries)
+
+        for chat_id in self.admin_chat_ids:
+            msg_id = self._price_board_msg_ids.get(chat_id)
+
+            if msg_id is not None:
+                # Try to edit existing message
+                try:
+                    await self._app.bot.edit_message_text(
+                        text=text, chat_id=chat_id, message_id=msg_id,
+                    )
+                    continue
+                except BadRequest:
+                    # Message deleted or not found — fall through to send new
+                    pass
+
+            # Send new message and pin it
+            try:
+                sent = await self._app.bot.send_message(chat_id=chat_id, text=text)
+                self._price_board_msg_ids[chat_id] = sent.message_id
+                await self._app.bot.pin_chat_message(
+                    chat_id=chat_id, message_id=sent.message_id, disable_notification=True,
+                )
+            except Exception:
+                logger.exception("price_board_send_failed", chat_id=chat_id)
 
     # --- Reply helper with translate button ---
 
