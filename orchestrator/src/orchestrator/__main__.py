@@ -139,6 +139,9 @@ def create_app_components(
     )
     paper_engine.rebuild_from_db()
 
+    # Symbols (used by price monitor and scheduler)
+    symbols = pipeline_symbols or ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+
     # Price Monitor
     from orchestrator.exchange.price_monitor import PriceMonitor
 
@@ -147,6 +150,7 @@ def create_app_components(
         price_monitor = PriceMonitor(
             paper_engine=paper_engine,
             data_fetcher=data_fetcher,
+            symbols=symbols,
         )
 
     # Approval & Execution (M4)
@@ -180,7 +184,6 @@ def create_app_components(
         approval_manager=approval_manager,
     )
 
-    symbols = pipeline_symbols or ["BTC/USDT:USDT", "ETH/USDT:USDT"]
     scheduler = PipelineScheduler(
         runner=runner,
         symbols=symbols,
@@ -320,6 +323,7 @@ async def _run_bot(components: dict[str, Any], settings: Settings) -> None:
     price_monitor = components.get("price_monitor")
     if price_monitor is not None:
         price_monitor._on_close = bot.push_close_report
+        price_monitor._on_tick = bot.update_price_board
 
     app = bot.build()
     stop = asyncio.Event()
