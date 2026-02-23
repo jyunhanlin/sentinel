@@ -432,6 +432,28 @@ def format_history_paginated(
     return "\n".join(lines)
 
 
+def format_price_board(summaries: list) -> str:
+    """Format a price board for pinned message display."""
+    from datetime import UTC, datetime
+
+    lines = ["━━ Price Board ━━"]
+
+    if not summaries:
+        lines.append("No symbols configured.")
+        return "\n".join(lines)
+
+    for s in summaries:
+        # Strip :USDT suffix for cleaner display
+        display_symbol = s.symbol.replace(":USDT", "")
+        sign = "+" if s.change_24h_pct >= 0 else ""
+        lines.append(f"{display_symbol}  ${s.price:,.1f}  {sign}{s.change_24h_pct:.2f}%")
+
+    now = datetime.now(UTC).strftime("%H:%M:%S")
+    lines.append(f"\nUpdated: {now} UTC")
+
+    return "\n".join(lines)
+
+
 def format_history(trades: list[PaperTradeRecord]) -> str:
     if not trades:
         return "No closed trades yet."
