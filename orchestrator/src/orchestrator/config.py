@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     paper_maintenance_margin_rate: float = 0.5  # %
     paper_leverage_options: list[int] = Field(default=[5, 10, 20, 50])
 
+    # Price Monitor
+    price_monitor_interval_seconds: int = 60  # check every N seconds
+    price_monitor_enabled: bool = True
+
     # Semi-auto Trading
     trading_mode: str = "paper"                    # "paper" | "live"
     approval_timeout_minutes: int = 15
