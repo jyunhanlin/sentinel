@@ -166,9 +166,9 @@ class TestPriceMonitorJob:
             price_monitor=monitor,
             price_monitor_interval_seconds=30,
         )
-        with patch("orchestrator.pipeline.scheduler.AsyncIOScheduler") as MockSched:
+        with patch("orchestrator.pipeline.scheduler.AsyncIOScheduler") as mock_sched:
             mock_instance = MagicMock()
-            MockSched.return_value = mock_instance
+            mock_sched.return_value = mock_instance
             scheduler.start()
 
             job_ids = [call.kwargs["id"] for call in mock_instance.add_job.call_args_list]
@@ -180,9 +180,9 @@ class TestPriceMonitorJob:
             runner=runner,
             symbols=["BTC/USDT:USDT"],
         )
-        with patch("orchestrator.pipeline.scheduler.AsyncIOScheduler") as MockSched:
+        with patch("orchestrator.pipeline.scheduler.AsyncIOScheduler") as mock_sched:
             mock_instance = MagicMock()
-            MockSched.return_value = mock_instance
+            mock_sched.return_value = mock_instance
             scheduler.start()
 
             job_ids = [call.kwargs.get("id", "") for call in mock_instance.add_job.call_args_list]

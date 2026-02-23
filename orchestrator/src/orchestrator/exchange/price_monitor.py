@@ -5,9 +5,11 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from orchestrator.exchange.paper_engine import CloseResult
+
 if TYPE_CHECKING:
     from orchestrator.exchange.data_fetcher import DataFetcher
-    from orchestrator.exchange.paper_engine import CloseResult, PaperEngine
+    from orchestrator.exchange.paper_engine import PaperEngine
 
 logger = structlog.get_logger(__name__)
 
@@ -30,8 +32,6 @@ class PriceMonitor:
 
     async def check(self) -> list[CloseResult]:
         """Check SL/TP/Liquidation for all open positions. Returns closed positions."""
-        from orchestrator.exchange.paper_engine import CloseResult
-
         positions = self._paper_engine.get_open_positions()
         if not positions:
             return []
