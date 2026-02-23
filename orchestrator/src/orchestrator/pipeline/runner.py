@@ -84,16 +84,7 @@ class PipelineRunner:
             snapshot = await self._data_fetcher.fetch_snapshot(symbol, timeframe=timeframe)
             logger.info("snapshot_fetched", price=snapshot.current_price)
 
-            # Step 2: Check SL/TP on existing positions
-            close_results: list[CloseResult] = []
-            if self._paper_engine is not None:
-                close_results = self._paper_engine.check_sl_tp(
-                    symbol=symbol, current_price=snapshot.current_price
-                )
-                for cr in close_results:
-                    logger.info("position_closed_sltp", trade_id=cr.trade_id, reason=cr.reason)
-
-            # Step 3: Run LLM-1 and LLM-2 in parallel
+            # Step 2: Run LLM-1 and LLM-2 in parallel
             sentiment_result, market_result = await asyncio.gather(
                 self._sentiment_agent.analyze(snapshot=snapshot, model_override=model_override),
                 self._market_agent.analyze(snapshot=snapshot, model_override=model_override),
@@ -102,7 +93,7 @@ class PipelineRunner:
             self._save_llm_calls(run_id, "sentiment", sentiment_result)
             self._save_llm_calls(run_id, "market", market_result)
 
-            # Step 4: Run LLM-3 (depends on LLM-1 + LLM-2)
+            # Step 3: Run LLM-3 (depends on LLM-1 + LLM-2)
             proposer_result = await self._proposer_agent.analyze(
                 snapshot=snapshot,
                 sentiment=sentiment_result.output,
@@ -111,7 +102,7 @@ class PipelineRunner:
             )
             self._save_llm_calls(run_id, "proposer", proposer_result)
 
-            # Step 5: Validate proposal
+            # Step 4: Validate proposal
             aggregation = aggregate_proposal(
                 proposer_result.output, current_price=snapshot.current_price
             )
@@ -141,10 +132,9 @@ class PipelineRunner:
                     sentiment_degraded=sentiment_result.degraded,
                     market_degraded=market_result.degraded,
                     proposer_degraded=proposer_result.degraded,
-                    close_results=close_results,
                 )
 
-            # Step 6: Risk check
+            # Step 5: Risk check
             risk_result: RiskResult | None = None
             if self._risk_checker is not None and self._paper_engine is not None:
                 from datetime import UTC, datetime
@@ -192,10 +182,9 @@ class PipelineRunner:
                         market_degraded=market_result.degraded,
                         proposer_degraded=proposer_result.degraded,
                         risk_result=risk_result,
-                        close_results=close_results,
-                    )
+                        )
 
-                # Step 7: Open position or create pending approval
+                # Step 6: Open position or create pending approval
                 if aggregation.proposal.side != Side.FLAT:
                     if self._approval_manager is not None:
                         # Semi-auto: create pending approval
@@ -224,15 +213,14 @@ class PipelineRunner:
                             sentiment_degraded=sentiment_result.degraded,
                             market_degraded=market_result.degraded,
                             proposer_degraded=proposer_result.degraded,
-                            close_results=close_results,
-                        )
+                                )
                     else:
                         # Auto mode: execute immediately
                         self._paper_engine.open_position(
                             aggregation.proposal, current_price=snapshot.current_price
                         )
 
-            # Step 8: Save approved proposal and return
+            # Step 7: Save approved proposal and return
             self._proposal_repo.save_proposal(
                 proposal_id=aggregation.proposal.proposal_id,
                 run_id=run_id,
@@ -252,7 +240,6 @@ class PipelineRunner:
                 market_degraded=market_result.degraded,
                 proposer_degraded=proposer_result.degraded,
                 risk_result=risk_result,
-                close_results=close_results,
             )
 
         except Exception as e:

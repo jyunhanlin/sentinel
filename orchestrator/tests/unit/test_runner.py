@@ -271,7 +271,7 @@ class TestPipelineRunnerWithRisk:
         risk_checker.check.return_value = RiskResult(approved=True)
 
         paper_engine = MagicMock()
-        paper_engine.check_sl_tp.return_value = []
+
         paper_engine.open_positions_risk_pct = 0.0
         paper_engine.paused = False
         paper_engine.equity = 10000.0
@@ -324,7 +324,7 @@ class TestPipelineRunnerWithRisk:
         )
 
         paper_engine = MagicMock()
-        paper_engine.check_sl_tp.return_value = []
+
         paper_engine.open_positions_risk_pct = 0.0
         paper_engine.paused = False
         paper_engine.equity = 10000.0
@@ -377,7 +377,7 @@ class TestPipelineRunnerApproval:
         risk_checker.check.return_value = RiskResult(approved=True)
 
         paper_engine = MagicMock()
-        paper_engine.check_sl_tp.return_value = []
+
         paper_engine.open_positions_risk_pct = 0.0
         paper_engine.equity = 10000.0
         paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
@@ -433,7 +433,7 @@ class TestPipelineRunnerApproval:
         risk_checker.check.return_value = RiskResult(approved=True)
 
         paper_engine = MagicMock()
-        paper_engine.check_sl_tp.return_value = []
+
         paper_engine.open_positions_risk_pct = 0.0
         paper_engine.equity = 10000.0
         paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
