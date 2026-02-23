@@ -432,18 +432,36 @@ def format_history_paginated(
     return "\n".join(lines)
 
 
+def _compact_price(price: float) -> str:
+    """Format price compactly: 69123.5 → '69.1K', 2530.8 → '2.5K', 142.35 → '142'."""
+    if price >= 1000:
+        return f"{price / 1000:.1f}K"
+    return f"{price:,.0f}"
+
+
 def format_price_board(summaries: list) -> str:
-    """Format a price board for pinned message display."""
+    """Format a price board for pinned message display.
+
+    First line is a compact summary visible in the Telegram pin preview.
+    """
     from datetime import UTC, datetime
 
-    lines = ["━━ Price Board ━━"]
-
     if not summaries:
-        lines.append("No symbols configured.")
-        return "\n".join(lines)
+        return "━━ Price Board ━━\nNo symbols configured."
 
+    # Line 1: compact summary for pinned preview
+    compact_parts: list[str] = []
     for s in summaries:
-        # Strip :USDT suffix for cleaner display
+        short_symbol = s.symbol.split("/")[0]  # "BTC/USDT:USDT" → "BTC"
+        sign = "+" if s.change_24h_pct >= 0 else ""
+        compact_parts.append(
+            f"{short_symbol} {_compact_price(s.price)}({sign}{s.change_24h_pct:.1f}%)"
+        )
+    summary_line = " ".join(compact_parts)
+
+    # Detailed lines
+    lines = [summary_line, "━━ Price Board ━━"]
+    for s in summaries:
         display_symbol = s.symbol.replace(":USDT", "")
         sign = "+" if s.change_24h_pct >= 0 else ""
         lines.append(f"{display_symbol}  ${s.price:,.1f}  {sign}{s.change_24h_pct:.2f}%")
