@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     paper_leverage_options: list[int] = Field(default=[5, 10, 20, 50])
 
     # Price Monitor
-    price_monitor_interval_seconds: int = 60  # check every N seconds
+    price_monitor_interval_seconds: int = 300  # check every N seconds
     price_monitor_enabled: bool = True
 
     # Semi-auto Trading
