@@ -466,8 +466,8 @@ def format_price_board(summaries: list) -> str:
         sign = "+" if s.change_24h_pct >= 0 else ""
         lines.append(f"{display_symbol}  ${s.price:,.1f}  {sign}{s.change_24h_pct:.2f}%")
 
-    now = datetime.now(UTC).strftime("%H:%M:%S")
-    lines.append(f"\nUpdated: {now} UTC")
+    now = datetime.now(UTC).astimezone()
+    lines.append(f"\nUpdated: {now.strftime('%H:%M:%S')}")
 
     return "\n".join(lines)
 
