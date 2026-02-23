@@ -459,7 +459,7 @@ class TestApprovalCallback:
             btn.callback_data for row in markup.inline_keyboard for btn in row
             if btn.callback_data
         ]
-        assert any("confirm_leverage:" in d for d in all_data)
+        assert any("leverage:" in d for d in all_data)
 
     @pytest.mark.asyncio
     async def test_reject_callback(self):
@@ -1249,6 +1249,45 @@ class TestApproveWithLeverage:
         assert any("leverage:" in d for d in all_data)
 
     @pytest.mark.asyncio
+    async def test_leverage_selection_shows_confirmation_card(self):
+        """After selecting leverage, bot should show confirmation with margin/liq details."""
+        bot = self._make_bot()
+        approval = MagicMock()
+        approval.approval_id = "abc123"
+        approval.proposal.symbol = "BTC/USDT:USDT"
+        approval.proposal.side = Side.LONG
+        approval.proposal.stop_loss = 67000.0
+        approval.proposal.take_profit = [70000.0]
+        approval.proposal.position_size_risk_pct = 1.0
+        approval.snapshot_price = 68000.0
+        bot._approval_manager.get.return_value = approval
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=68000.0)
+        bot._paper_engine.calculate_margin.return_value = 680.0
+        bot._paper_engine.calculate_liquidation_price.return_value = 61540.0
+        bot._paper_engine._position_sizer.calculate.return_value = 0.1
+
+        query = self._make_callback_query("leverage:abc123:10")
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+
+        await bot._callback_router(update, MagicMock())
+
+        query.edit_message_text.assert_called_once()
+        call_kwargs = query.edit_message_text.call_args
+        text = call_kwargs.kwargs.get("text", call_kwargs.args[0] if call_kwargs.args else "")
+        assert "Margin" in text
+        assert "Liq" in text
+        markup = call_kwargs.kwargs.get("reply_markup")
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        assert any("confirm_leverage:" in d for d in all_data)
+        assert any("cancel:" in d for d in all_data)
+
+    @pytest.mark.asyncio
     async def test_confirm_leverage_executes_trade(self):
         """Confirming leverage executes the trade with selected leverage."""
         bot = self._make_bot()
@@ -1384,4 +1423,280 @@ class TestPositionOperationCallbacks:
             btn.callback_data for row in markup.inline_keyboard for btn in row
             if btn.callback_data
         ]
+        assert any("select_reduce:" in d for d in all_data)
+
+
+class TestReduceFlow:
+    def _make_bot(self):
+        return SentinelBot(
+            token="test-token",
+            admin_chat_ids=[123],
+            paper_engine=MagicMock(),
+            data_fetcher=MagicMock(),
+            trade_repo=MagicMock(),
+        )
+
+    def _make_update(self, data: str):
+        query = MagicMock()
+        query.data = data
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        query.message = MagicMock()
+        query.message.message_id = 1
+        query.message.reply_markup = None
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        return update, query
+
+    @pytest.mark.asyncio
+    async def test_select_reduce_shows_confirmation(self):
+        """After selecting %, show confirmation card with estimated PnL."""
+        bot = self._make_bot()
+        pos = MagicMock(
+            symbol="BTC/USDT:USDT", side=Side.LONG, leverage=10,
+            entry_price=68000.0, quantity=0.1, margin=680.0,
+            stop_loss=67000.0, trade_id="t1",
+        )
+        bot._paper_engine._find_position.return_value = pos
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=69000.0)
+
+        update, query = self._make_update("select_reduce:t1:50")
+        await bot._callback_router(update, MagicMock())
+
+        call_kwargs = query.edit_message_text.call_args.kwargs
+        text = call_kwargs.get("text", "")
+        assert "CONFIRM REDUCE" in text
+        assert "PnL" in text
+        markup = call_kwargs.get("reply_markup")
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
         assert any("confirm_reduce:" in d for d in all_data)
+
+    @pytest.mark.asyncio
+    async def test_confirm_reduce_executes(self):
+        """Clicking Confirm should execute the reduce operation."""
+        bot = self._make_bot()
+        close_result = MagicMock()
+        close_result.pnl = 50.0
+        close_result.symbol = "BTC/USDT:USDT"
+        close_result.side = Side.LONG
+        close_result.entry_price = 68000.0
+        close_result.exit_price = 69000.0
+        close_result.quantity = 0.05
+        close_result.fees = 1.7
+        close_result.reason = "partial_reduce"
+        bot._paper_engine.reduce_position.return_value = close_result
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=69000.0)
+
+        update, query = self._make_update("confirm_reduce:t1:50")
+        await bot._callback_router(update, MagicMock())
+
+        bot._paper_engine.reduce_position.assert_called_once()
+
+
+class TestAddFlow:
+    def _make_bot(self):
+        return SentinelBot(
+            token="test-token",
+            admin_chat_ids=[123],
+            paper_engine=MagicMock(),
+            data_fetcher=MagicMock(),
+            trade_repo=MagicMock(),
+        )
+
+    def _make_update(self, data: str):
+        query = MagicMock()
+        query.data = data
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        query.message = MagicMock()
+        query.message.message_id = 1
+        query.message.reply_markup = None
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+        return update, query
+
+    @pytest.mark.asyncio
+    async def test_add_shows_risk_options_with_select_add(self):
+        """Clicking Add button should show risk % selection pointing to select_add."""
+        bot = self._make_bot()
+        bot._paper_engine.get_position_with_pnl.return_value = {
+            "position": MagicMock(
+                symbol="BTC/USDT:USDT", side=Side.LONG, leverage=10,
+                entry_price=68000.0, quantity=0.1, margin=680.0,
+                liquidation_price=61540.0, stop_loss=67000.0,
+                take_profit=[70000.0], opened_at=datetime.now(UTC),
+                trade_id="t1",
+            ),
+            "unrealized_pnl": 50.0, "pnl_pct": 0.74, "roe_pct": 7.35,
+        }
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=68500.0)
+
+        update, query = self._make_update("add:t1")
+        await bot._callback_router(update, MagicMock())
+
+        markup = query.edit_message_text.call_args.kwargs.get("reply_markup")
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        assert any("select_add:" in d for d in all_data)
+
+    @pytest.mark.asyncio
+    async def test_select_add_shows_confirmation(self):
+        """After selecting risk %, show confirmation card with details."""
+        bot = self._make_bot()
+        pos = MagicMock(
+            symbol="BTC/USDT:USDT", side=Side.LONG, leverage=10,
+            entry_price=68000.0, quantity=0.1, margin=680.0,
+            stop_loss=67000.0, trade_id="t1",
+        )
+        bot._paper_engine._find_position.return_value = pos
+        bot._paper_engine._position_sizer.calculate.return_value = 0.05
+        bot._paper_engine.calculate_margin.return_value = 345.0
+        bot._paper_engine.equity = 10000.0
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=69000.0)
+
+        update, query = self._make_update("select_add:t1:1.0")
+        await bot._callback_router(update, MagicMock())
+
+        call_kwargs = query.edit_message_text.call_args.kwargs
+        text = call_kwargs.get("text", "")
+        assert "CONFIRM ADD" in text
+        markup = query.edit_message_text.call_args.kwargs.get("reply_markup")
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        assert any("confirm_add:" in d for d in all_data)
+
+    @pytest.mark.asyncio
+    async def test_confirm_add_executes(self):
+        """Clicking Confirm should execute the add operation."""
+        bot = self._make_bot()
+        updated_pos = MagicMock(
+            symbol="BTC/USDT:USDT", side=MagicMock(value="long"),
+            leverage=10, entry_price=68500.0, quantity=0.15, margin=1025.0,
+        )
+        bot._paper_engine.add_to_position.return_value = updated_pos
+        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=69000.0)
+
+        update, query = self._make_update("confirm_add:t1:1.0")
+        await bot._callback_router(update, MagicMock())
+
+        bot._paper_engine.add_to_position.assert_called_once()
+
+
+class TestHistoryFilter:
+    @pytest.mark.asyncio
+    async def test_history_shows_filter_buttons(self):
+        """When multiple symbols have closed trades, /history should show filter buttons."""
+        bot = SentinelBot(
+            token="test-token",
+            admin_chat_ids=[123],
+            trade_repo=MagicMock(),
+        )
+        bot._trade_repo.get_closed_paginated.return_value = (
+            [MagicMock(
+                symbol="BTC/USDT:USDT", side="long", leverage=10,
+                entry_price=68000.0, exit_price=69000.0,
+                pnl=100.0, fees=3.4, close_reason="manual", margin=680.0,
+            )],
+            1,
+        )
+        bot._trade_repo.get_distinct_closed_symbols.return_value = [
+            "BTC/USDT:USDT", "ETH/USDT:USDT",
+        ]
+
+        update = _make_update(123)
+        await bot._history_handler(update, _make_context())
+
+        call_kwargs = update.message.reply_text.call_args
+        markup = call_kwargs.kwargs.get("reply_markup") or call_kwargs[1].get("reply_markup")
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        assert any("history:filter:" in d for d in all_data)
+        assert any("history:filter:all" == d for d in all_data)
+
+    @pytest.mark.asyncio
+    async def test_history_no_filter_when_single_symbol(self):
+        """When only one symbol exists, no filter row should appear."""
+        bot = SentinelBot(
+            token="test-token",
+            admin_chat_ids=[123],
+            trade_repo=MagicMock(),
+        )
+        bot._trade_repo.get_closed_paginated.return_value = (
+            [MagicMock(
+                symbol="BTC/USDT:USDT", side="long", leverage=10,
+                entry_price=68000.0, exit_price=69000.0,
+                pnl=100.0, fees=3.4, close_reason="manual", margin=680.0,
+            )],
+            1,
+        )
+        bot._trade_repo.get_distinct_closed_symbols.return_value = ["BTC/USDT:USDT"]
+
+        update = _make_update(123)
+        await bot._history_handler(update, _make_context())
+
+        call_kwargs = update.message.reply_text.call_args
+        markup = call_kwargs.kwargs.get("reply_markup") or call_kwargs[1].get("reply_markup")
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        assert not any("history:filter:" in d for d in all_data)
+
+    @pytest.mark.asyncio
+    async def test_history_filter_preserves_across_pagination(self):
+        """Pagination buttons should preserve the active symbol filter."""
+        bot = SentinelBot(
+            token="test-token",
+            admin_chat_ids=[123],
+            trade_repo=MagicMock(),
+        )
+        bot._trade_repo.get_closed_paginated.return_value = (
+            [MagicMock(
+                symbol="BTC/USDT:USDT", side="long", leverage=10,
+                entry_price=68000.0, exit_price=69000.0,
+                pnl=100.0, fees=3.4, close_reason="manual", margin=680.0,
+            )] * 5,
+            12,  # total > page_size → next button should appear
+        )
+        bot._trade_repo.get_distinct_closed_symbols.return_value = [
+            "BTC/USDT:USDT", "ETH/USDT:USDT",
+        ]
+
+        query = MagicMock()
+        query.data = "history:filter:BTC/USDT:USDT"
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+        query.message = MagicMock()
+        query.message.message_id = 1
+        query.message.reply_markup = None
+
+        update = MagicMock()
+        update.callback_query = query
+        update.effective_chat = MagicMock()
+        update.effective_chat.id = 123
+
+        await bot._callback_router(update, MagicMock())
+
+        call_kwargs = query.edit_message_text.call_args.kwargs
+        markup = call_kwargs.get("reply_markup")
+        all_data = [
+            btn.callback_data for row in markup.inline_keyboard for btn in row
+            if btn.callback_data
+        ]
+        # Next button should include filter
+        next_btns = [d for d in all_data if d.startswith("history:page:")]
+        assert len(next_btns) > 0
+        assert any("BTC" in d for d in next_btns)

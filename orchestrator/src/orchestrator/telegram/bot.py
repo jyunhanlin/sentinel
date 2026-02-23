@@ -488,6 +488,9 @@ class SentinelBot:
         total_pages = max(1, (total + page_size - 1) // page_size)
         text = format_history_paginated(trades, page=1, total_pages=total_pages)
 
+        rows: list[list[InlineKeyboardButton]] = []
+
+        # Navigation row
         nav_buttons: list[InlineKeyboardButton] = []
         nav_buttons.append(
             InlineKeyboardButton(f"Page 1/{total_pages}", callback_data="cancel:0")
@@ -496,10 +499,26 @@ class SentinelBot:
             nav_buttons.append(
                 InlineKeyboardButton("Next", callback_data="history:page:2")
             )
+        rows.append(nav_buttons)
+
+        # Filter row (only when multiple symbols exist)
+        symbols = self._trade_repo.get_distinct_closed_symbols()
+        if len(symbols) > 1:
+            filter_buttons = [
+                InlineKeyboardButton(
+                    sym.split("/")[0],
+                    callback_data=f"history:filter:{sym}",
+                )
+                for sym in symbols[:4]
+            ]
+            filter_buttons.append(
+                InlineKeyboardButton("All", callback_data="history:filter:all")
+            )
+            rows.append(filter_buttons)
 
         if update.message:
             await update.message.reply_text(
-                text, reply_markup=InlineKeyboardMarkup([nav_buttons]),
+                text, reply_markup=InlineKeyboardMarkup(rows),
             )
 
     async def _resume_handler(
@@ -574,12 +593,15 @@ class SentinelBot:
         "approve":          (2, "_handle_approve"),
         "reject":           (2, "_handle_reject"),
         "translate":        (2, "_handle_translate"),
+        "leverage":         (3, "_handle_leverage_preview"),
         "confirm_leverage": (3, "_handle_confirm_leverage"),
         "close":            (2, "_handle_close"),
         "confirm_close":    (2, "_handle_confirm_close"),
         "reduce":           (2, "_handle_reduce"),
+        "select_reduce":    (3, "_handle_select_reduce"),
         "confirm_reduce":   (3, "_handle_confirm_reduce"),
         "add":              (2, "_handle_add"),
+        "select_add":       (3, "_handle_select_add"),
         "confirm_add":      (3, "_handle_confirm_add"),
         "cancel":           (1, "_handle_cancel"),
         "history":          (3, "_handle_history_callback"),
@@ -679,10 +701,10 @@ class SentinelBot:
             await query.edit_message_text("Approval expired or already handled.")
             return
 
-        # Show leverage selection buttons
+        # Show leverage selection buttons (→ preview step, not direct execution)
         leverage_buttons = [
             InlineKeyboardButton(
-                f"{lev}x", callback_data=f"confirm_leverage:{approval_id}:{lev}"
+                f"{lev}x", callback_data=f"leverage:{approval_id}:{lev}"
             )
             for lev in self._leverage_options
         ]
@@ -701,11 +723,71 @@ class SentinelBot:
         )
         await _safe_callback_reply(query, text=text, reply_markup=keyboard)
 
+    async def _handle_leverage_preview(
+        self, query: CallbackQuery, approval_id: str, leverage_str: str, *_args: str,
+    ) -> None:
+        """Show confirmation card with margin/liq details before executing."""
+        leverage = int(leverage_str)
+        if self._approval_manager is None or self._executor is None:
+            await query.answer("Not configured")
+            return
+        if self._paper_engine is None:
+            await query.answer("Paper engine not configured")
+            return
+
+        approval = self._approval_manager.get(approval_id)
+        if approval is None:
+            await query.answer("Expired or not found")
+            await query.edit_message_text("Approval expired or already handled.")
+            return
+
+        p = approval.proposal
+        current_price = approval.snapshot_price
+        if self._data_fetcher is not None:
+            current_price = await self._data_fetcher.fetch_current_price(p.symbol)
+
+        qty = self._paper_engine._position_sizer.calculate(
+            equity=self._paper_engine.equity,
+            risk_pct=p.position_size_risk_pct,
+            entry_price=current_price,
+            stop_loss=p.stop_loss,
+        )
+        margin = self._paper_engine.calculate_margin(
+            quantity=qty, price=current_price, leverage=leverage,
+        )
+        liq = self._paper_engine.calculate_liquidation_price(
+            entry_price=current_price, leverage=leverage, side=p.side,
+        )
+
+        side_str = p.side.value.upper()
+        tp_str = (
+            ", ".join(f"${tp:,.1f}" for tp in p.take_profit)
+            if p.take_profit
+            else "—"
+        )
+        text = (
+            f"━━ CONFIRM ORDER ━━\n"
+            f"{p.symbol}  {side_str} · {leverage}x\n\n"
+            f"Entry: ~${current_price:,.1f} | Qty: {qty:.4f}\n"
+            f"Margin: ${margin:,.2f} | Liq: ~${liq:,.1f}\n"
+            f"SL: ${p.stop_loss:,.1f} | TP: {tp_str}\n"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "Confirm",
+                    callback_data=f"confirm_leverage:{approval_id}:{leverage}",
+                ),
+                InlineKeyboardButton("Cancel", callback_data="cancel:0"),
+            ],
+        ])
+        await _safe_callback_reply(query, text=text, reply_markup=keyboard)
+
     async def _handle_confirm_leverage(
         self, query: CallbackQuery, approval_id: str, leverage_str: str, *_args: str,
     ) -> None:
-        leverage = int(leverage_str)
         """Execute trade with selected leverage."""
+        leverage = int(leverage_str)
         if self._approval_manager is None or self._executor is None:
             await query.answer("Not configured")
             return
@@ -894,11 +976,56 @@ class SentinelBot:
         text = f"━━ REDUCE POSITION ━━\n\n{card}\n\nSelect percentage to close:"
         keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("25%", callback_data=f"confirm_reduce:{trade_id}:25"),
-                InlineKeyboardButton("50%", callback_data=f"confirm_reduce:{trade_id}:50"),
-                InlineKeyboardButton("75%", callback_data=f"confirm_reduce:{trade_id}:75"),
+                InlineKeyboardButton("25%", callback_data=f"select_reduce:{trade_id}:25"),
+                InlineKeyboardButton("50%", callback_data=f"select_reduce:{trade_id}:50"),
+                InlineKeyboardButton("75%", callback_data=f"select_reduce:{trade_id}:75"),
             ],
             [InlineKeyboardButton("Cancel", callback_data="cancel:0")],
+        ])
+        await _safe_callback_reply(query, text=text, reply_markup=keyboard)
+
+    async def _handle_select_reduce(
+        self, query: CallbackQuery, trade_id: str, pct_str: str, *_args: str,
+    ) -> None:
+        """Show confirmation card for reduce operation with estimated PnL."""
+        from orchestrator.models import Side
+
+        pct = float(pct_str)
+        if self._paper_engine is None or self._data_fetcher is None:
+            await query.answer("Not configured")
+            return
+
+        try:
+            pos = self._paper_engine._find_position(trade_id)
+            current_price = await self._data_fetcher.fetch_current_price(pos.symbol)
+        except ValueError:
+            await query.answer("Position not found")
+            return
+
+        close_qty = pos.quantity * pct / 100
+        direction = 1 if pos.side == Side.LONG else -1
+        est_pnl = (current_price - pos.entry_price) * close_qty * direction
+        pnl_sign = "+" if est_pnl >= 0 else ""
+
+        side_str = (
+            pos.side.value.upper()
+            if hasattr(pos.side, "value")
+            else str(pos.side).upper()
+        )
+        text = (
+            f"━━ CONFIRM REDUCE ━━\n"
+            f"{pos.symbol}  {side_str} {pos.leverage}x\n\n"
+            f"Close {pct:.0f}%: {close_qty:.4f} at ~${current_price:,.1f}\n"
+            f"Est. PnL: {pnl_sign}${est_pnl:,.2f}"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "Confirm Reduce",
+                    callback_data=f"confirm_reduce:{trade_id}:{pct_str}",
+                ),
+                InlineKeyboardButton("Cancel", callback_data="cancel:0"),
+            ],
         ])
         await _safe_callback_reply(query, text=text, reply_markup=keyboard)
 
@@ -944,11 +1071,60 @@ class SentinelBot:
         text = f"━━ ADD TO POSITION ━━\n\n{format_position_card(info)}\n\nSelect risk % to add:"
         keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("0.5%", callback_data=f"confirm_add:{trade_id}:0.5"),
-                InlineKeyboardButton("1%", callback_data=f"confirm_add:{trade_id}:1.0"),
-                InlineKeyboardButton("2%", callback_data=f"confirm_add:{trade_id}:2.0"),
+                InlineKeyboardButton("0.5%", callback_data=f"select_add:{trade_id}:0.5"),
+                InlineKeyboardButton("1%", callback_data=f"select_add:{trade_id}:1.0"),
+                InlineKeyboardButton("2%", callback_data=f"select_add:{trade_id}:2.0"),
             ],
             [InlineKeyboardButton("Cancel", callback_data="cancel:0")],
+        ])
+        await _safe_callback_reply(query, text=text, reply_markup=keyboard)
+
+    async def _handle_select_add(
+        self, query: CallbackQuery, trade_id: str, risk_pct_str: str, *_args: str,
+    ) -> None:
+        """Show confirmation card for add operation."""
+        risk_pct = float(risk_pct_str)
+        if self._paper_engine is None or self._data_fetcher is None:
+            await query.answer("Not configured")
+            return
+
+        try:
+            pos = self._paper_engine._find_position(trade_id)
+            current_price = await self._data_fetcher.fetch_current_price(pos.symbol)
+        except ValueError:
+            await query.answer("Position not found")
+            return
+
+        add_qty = self._paper_engine._position_sizer.calculate(
+            equity=self._paper_engine.equity,
+            risk_pct=risk_pct,
+            entry_price=current_price,
+            stop_loss=pos.stop_loss,
+        )
+        add_margin = self._paper_engine.calculate_margin(
+            quantity=add_qty, price=current_price, leverage=pos.leverage,
+        )
+
+        side_str = (
+            pos.side.value.upper()
+            if hasattr(pos.side, "value")
+            else str(pos.side).upper()
+        )
+        text = (
+            f"━━ CONFIRM ADD ━━\n"
+            f"{pos.symbol}  {side_str} {pos.leverage}x\n\n"
+            f"Current Price: ~${current_price:,.1f}\n"
+            f"Add Qty: {add_qty:.4f} | Add Margin: ${add_margin:,.2f}\n"
+            f"Risk: {risk_pct}%"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "Confirm Add",
+                    callback_data=f"confirm_add:{trade_id}:{risk_pct}",
+                ),
+                InlineKeyboardButton("Cancel", callback_data="cancel:0"),
+            ],
         ])
         await _safe_callback_reply(query, text=text, reply_markup=keyboard)
 
@@ -982,10 +1158,17 @@ class SentinelBot:
     async def _handle_history_callback(
         self, query: CallbackQuery, action: str, value: str, *extra: str,
     ) -> None:
+        """Handle history pagination/filter callbacks.
+
+        Callback formats:
+          history:page:N              — plain pagination
+          history:page:N:SYMBOL       — pagination with filter preserved
+          history:filter:SYMBOL       — apply symbol filter (page 1)
+          history:filter:all          — reset filter
+        """
         # Rejoin extra parts for symbols with colons (e.g. "BTC/USDT:USDT")
         if extra:
             value = ":".join([value, *extra])
-        """Handle history pagination callbacks (history:page:N or history:filter:SYMBOL)."""
         if self._trade_repo is None:
             await query.answer("Not configured")
             return
@@ -997,28 +1180,54 @@ class SentinelBot:
         symbol_filter: str | None = None
 
         if action == "page":
-            page = int(value)
+            # value may be "2" or "2:BTC/USDT:USDT" (page with filter)
+            parts = value.split(":", 1)
+            page = int(parts[0])
+            if len(parts) > 1:
+                symbol_filter = parts[1]
         elif action == "filter":
-            symbol_filter = value
+            if value != "all":
+                symbol_filter = value
 
         offset = (page - 1) * page_size
         trades, total = self._trade_repo.get_closed_paginated(
             offset=offset, limit=page_size, symbol=symbol_filter,
         )
         total_pages = max(1, (total + page_size - 1) // page_size)
-
         text = format_history_paginated(trades, page=page, total_pages=total_pages)
 
+        rows: list[list[InlineKeyboardButton]] = []
+
+        # Navigation row — encode filter in page callbacks
+        filter_suffix = f":{symbol_filter}" if symbol_filter else ""
         nav_buttons: list[InlineKeyboardButton] = []
         if page > 1:
-            prev_data = f"history:page:{page - 1}"
-            nav_buttons.append(InlineKeyboardButton("Prev", callback_data=prev_data))
+            nav_buttons.append(InlineKeyboardButton(
+                "Prev", callback_data=f"history:page:{page - 1}{filter_suffix}",
+            ))
         nav_buttons.append(
             InlineKeyboardButton(f"Page {page}/{total_pages}", callback_data="cancel:0")
         )
         if page < total_pages:
-            next_data = f"history:page:{page + 1}"
-            nav_buttons.append(InlineKeyboardButton("Next", callback_data=next_data))
+            nav_buttons.append(InlineKeyboardButton(
+                "Next", callback_data=f"history:page:{page + 1}{filter_suffix}",
+            ))
+        rows.append(nav_buttons)
 
-        keyboard = InlineKeyboardMarkup([nav_buttons])
+        # Filter row
+        symbols = self._trade_repo.get_distinct_closed_symbols()
+        if len(symbols) > 1:
+            filter_buttons = [
+                InlineKeyboardButton(
+                    sym.split("/")[0],
+                    callback_data=f"history:filter:{sym}",
+                )
+                for sym in symbols[:4]
+            ]
+            filter_buttons.append(
+                InlineKeyboardButton("All", callback_data="history:filter:all")
+            )
+            rows.append(filter_buttons)
+
+        keyboard = InlineKeyboardMarkup(rows)
         await _safe_callback_reply(query, text=text, reply_markup=keyboard)

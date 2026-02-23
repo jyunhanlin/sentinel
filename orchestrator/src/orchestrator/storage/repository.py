@@ -260,6 +260,18 @@ class PaperTradeRepository:
         )
         return trades, total
 
+    def get_distinct_closed_symbols(self) -> list[str]:
+        """Return unique symbols from closed trades, ordered by frequency."""
+        from sqlmodel import func
+
+        stmt = (
+            select(PaperTradeRecord.symbol)
+            .where(PaperTradeRecord.status == "closed")
+            .group_by(PaperTradeRecord.symbol)
+            .order_by(func.count().desc())
+        )
+        return list(self._session.exec(stmt).all())
+
     def update_trade_position(
         self,
         trade_id: str,

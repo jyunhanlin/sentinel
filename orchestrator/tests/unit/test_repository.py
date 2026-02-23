@@ -124,3 +124,20 @@ class TestPaperTradeRepoLeverage:
         assert updated.status == "open"  # still open
 
 
+class TestDistinctClosedSymbols:
+    def test_returns_unique_symbols(self, repo):
+        for i, sym in enumerate(["BTC/USDT:USDT", "ETH/USDT:USDT", "BTC/USDT:USDT"]):
+            repo.save_trade(
+                trade_id=f"t{i}", proposal_id=f"p{i}", symbol=sym,
+                side="long", entry_price=68000.0, quantity=0.1,
+            )
+            repo.update_trade_closed(f"t{i}", exit_price=69000.0, pnl=100.0, fees=3.4)
+        symbols = repo.get_distinct_closed_symbols()
+        assert sorted(symbols) == ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+
+    def test_returns_empty_when_no_closed(self, repo):
+        repo.save_trade(
+            trade_id="t1", proposal_id="p1", symbol="BTC/USDT:USDT",
+            side="long", entry_price=68000.0, quantity=0.1,
+        )
+        assert repo.get_distinct_closed_symbols() == []
