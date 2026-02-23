@@ -122,3 +122,61 @@ class TestPaperTradeRepoLeverage:
         assert updated.quantity == 0.05
         assert updated.margin == 340.0
         assert updated.status == "open"  # still open
+
+
+class TestMigration:
+    def test_migrate_adds_missing_columns(self):
+        """init_db should add leverage columns to an old paper_trades table."""
+        from sqlalchemy import inspect, text
+
+        from orchestrator.storage.database import init_db
+
+        engine = create_engine("sqlite:///:memory:")
+
+        # Create an old-schema table without the new columns
+        with engine.begin() as conn:
+            conn.execute(text(
+                "CREATE TABLE paper_trades ("
+                "  id INTEGER PRIMARY KEY,"
+                "  trade_id TEXT UNIQUE,"
+                "  proposal_id TEXT,"
+                "  symbol TEXT,"
+                "  side TEXT,"
+                "  entry_price REAL,"
+                "  exit_price REAL,"
+                "  quantity REAL,"
+                "  pnl REAL DEFAULT 0,"
+                "  fees REAL DEFAULT 0,"
+                "  risk_pct REAL DEFAULT 0,"
+                "  status TEXT DEFAULT 'open',"
+                "  mode TEXT DEFAULT 'paper',"
+                "  exchange_order_id TEXT DEFAULT '',"
+                "  sl_order_id TEXT DEFAULT '',"
+                "  tp_order_id TEXT DEFAULT '',"
+                "  opened_at TIMESTAMP,"
+                "  closed_at TIMESTAMP"
+                ")"
+            ))
+
+        # Verify old schema doesn't have 'leverage'
+        insp = inspect(engine)
+        old_cols = {c["name"] for c in insp.get_columns("paper_trades")}
+        assert "leverage" not in old_cols
+
+        # Run init_db — should migrate
+        init_db(engine)
+
+        # Verify new columns exist
+        insp = inspect(engine)
+        new_cols = {c["name"] for c in insp.get_columns("paper_trades")}
+        for col in ["leverage", "margin", "liquidation_price",
+                     "close_reason", "stop_loss", "take_profit_json"]:
+            assert col in new_cols, f"Missing column: {col}"
+
+    def test_migrate_is_idempotent(self):
+        """Running init_db twice should not error."""
+        from orchestrator.storage.database import init_db
+
+        engine = create_engine("sqlite:///:memory:")
+        init_db(engine)
+        init_db(engine)  # should not raise
