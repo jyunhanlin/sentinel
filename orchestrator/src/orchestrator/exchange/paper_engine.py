@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import structlog
 from pydantic import BaseModel
 
-from orchestrator.models import Side, TradeProposal
+from orchestrator.models import Side, TakeProfit, TradeProposal
 from orchestrator.risk.position_sizer import PositionSizer
 from orchestrator.stats.calculator import StatsCalculator
 
@@ -25,12 +25,13 @@ class Position(BaseModel, frozen=True):
     entry_price: float
     quantity: float
     stop_loss: float
-    take_profit: list[float]
+    take_profit: list[TakeProfit]
     opened_at: datetime
     risk_pct: float
     leverage: int = 1
     margin: float = 0.0
     liquidation_price: float = 0.0
+    triggered_tp_indices: list[int] = []
 
 
 class CloseResult(BaseModel, frozen=True):
@@ -42,7 +43,9 @@ class CloseResult(BaseModel, frozen=True):
     quantity: float
     pnl: float
     fees: float
-    reason: str  # "sl" | "tp"
+    reason: str  # "sl" | "tp" | "liquidation" | "manual"
+    partial: bool = False
+    remaining_quantity: float | None = None
 
 
 class PaperEngine:
@@ -138,8 +141,6 @@ class PaperEngine:
         open_fee = quantity * current_price * self._taker_fee_rate
         self._total_fees += open_fee
 
-        tp_prices = [tp.price for tp in proposal.take_profit]
-
         position = Position(
             trade_id=str(uuid.uuid4()),
             proposal_id=proposal.proposal_id,
@@ -148,7 +149,7 @@ class PaperEngine:
             entry_price=current_price,
             quantity=quantity,
             stop_loss=stop_loss,
-            take_profit=tp_prices,
+            take_profit=list(proposal.take_profit),
             opened_at=datetime.now(UTC),
             risk_pct=proposal.position_size_risk_pct,
             leverage=leverage,
@@ -169,7 +170,7 @@ class PaperEngine:
             margin=margin,
             liquidation_price=liquidation_price,
             stop_loss=stop_loss,
-            take_profit=tp_prices,
+            take_profit=[tp.model_dump() for tp in proposal.take_profit],
         )
 
         logger.info(
@@ -344,11 +345,27 @@ class PaperEngine:
                 remaining.append(pos)
                 continue
 
-            trigger = self._check_trigger(pos, current_price)
-            if trigger is not None:
-                exit_price, reason = trigger
+            # Liquidation check (highest priority)
+            if self._check_liquidation(pos, current_price):
+                result = self._close(pos, exit_price=current_price, reason="liquidation")
+                closed.append(result)
+                continue
+
+            # SL check (full close)
+            sl_result = self._check_sl(pos, current_price)
+            if sl_result is not None:
+                exit_price, reason = sl_result
                 result = self._close(pos, exit_price=exit_price, reason=reason)
                 closed.append(result)
+                continue
+
+            # TP check (may be partial)
+            tp_result = self._check_tp_levels(pos, current_price)
+            if tp_result is not None:
+                result, updated_pos = tp_result
+                closed.append(result)
+                if updated_pos is not None:
+                    remaining.append(updated_pos)
             else:
                 remaining.append(pos)
 
@@ -359,24 +376,42 @@ class PaperEngine:
         import json
 
         open_trades = self._trade_repo.get_open_positions()
-        self._positions = [
-            Position(
-                trade_id=t.trade_id,
-                proposal_id=t.proposal_id,
-                symbol=t.symbol,
-                side=Side(t.side),
-                entry_price=t.entry_price,
-                quantity=t.quantity,
-                stop_loss=t.stop_loss,
-                take_profit=json.loads(t.take_profit_json) if t.take_profit_json else [],
-                opened_at=t.opened_at,
-                risk_pct=t.risk_pct,
-                leverage=t.leverage,
-                margin=t.margin,
-                liquidation_price=t.liquidation_price,
+        positions: list[Position] = []
+        for t in open_trades:
+            take_profit_raw = json.loads(t.take_profit_json) if t.take_profit_json else []
+            take_profit_levels: list[TakeProfit] = []
+            for item in take_profit_raw:
+                if isinstance(item, dict):
+                    take_profit_levels.append(TakeProfit(**item))
+                else:
+                    # Legacy: plain float → treat as 100% close
+                    take_profit_levels.append(TakeProfit(price=item, close_pct=100))
+
+            triggered_tp = (
+                json.loads(t.triggered_tp_json)
+                if hasattr(t, "triggered_tp_json") and t.triggered_tp_json
+                else []
             )
-            for t in open_trades
-        ]
+
+            positions.append(
+                Position(
+                    trade_id=t.trade_id,
+                    proposal_id=t.proposal_id,
+                    symbol=t.symbol,
+                    side=Side(t.side),
+                    entry_price=t.entry_price,
+                    quantity=t.quantity,
+                    stop_loss=t.stop_loss,
+                    take_profit=take_profit_levels,
+                    opened_at=t.opened_at,
+                    risk_pct=t.risk_pct,
+                    leverage=t.leverage,
+                    margin=t.margin,
+                    liquidation_price=t.liquidation_price,
+                    triggered_tp_indices=triggered_tp,
+                )
+            )
+        self._positions = positions
         # Rebuild closed PnL and fees
         closed_trades = self._trade_repo.get_recent_closed(limit=1000)
         self._closed_pnl = sum(t.pnl for t in closed_trades)
@@ -388,27 +423,112 @@ class PaperEngine:
             total_fees=self._total_fees,
         )
 
-    def _check_trigger(
-        self, pos: Position, current_price: float
-    ) -> tuple[float, str] | None:
-        # Liquidation check (highest priority)
-        if pos.leverage > 1:
-            if pos.side == Side.LONG and current_price <= pos.liquidation_price:
-                return current_price, "liquidation"
-            if pos.side == Side.SHORT and current_price >= pos.liquidation_price:
-                return current_price, "liquidation"
+    def _check_liquidation(self, pos: Position, current_price: float) -> bool:
+        if pos.leverage <= 1:
+            return False
+        if pos.side == Side.LONG and current_price <= pos.liquidation_price:
+            return True
+        if pos.side == Side.SHORT and current_price >= pos.liquidation_price:
+            return True
+        return False
 
-        # SL/TP checks
-        if pos.side == Side.LONG:
-            if current_price <= pos.stop_loss:
-                return pos.stop_loss, "sl"
-            if pos.take_profit and current_price >= pos.take_profit[0]:
-                return pos.take_profit[0], "tp"
-        elif pos.side == Side.SHORT:
-            if current_price >= pos.stop_loss:
-                return pos.stop_loss, "sl"
-            if pos.take_profit and current_price <= pos.take_profit[0]:
-                return pos.take_profit[0], "tp"
+    def _check_sl(
+        self, pos: Position, current_price: float,
+    ) -> tuple[float, str] | None:
+        if pos.side == Side.LONG and current_price <= pos.stop_loss:
+            return pos.stop_loss, "sl"
+        if pos.side == Side.SHORT and current_price >= pos.stop_loss:
+            return pos.stop_loss, "sl"
+        return None
+
+    def _check_tp_levels(
+        self, pos: Position, current_price: float,
+    ) -> tuple[CloseResult, Position | None] | None:
+        """Check TP levels. Returns (CloseResult, remaining_position_or_None) if triggered."""
+        for idx, tp in enumerate(pos.take_profit):
+            if idx in pos.triggered_tp_indices:
+                continue
+
+            triggered = (
+                (pos.side == Side.LONG and current_price >= tp.price)
+                or (pos.side == Side.SHORT and current_price <= tp.price)
+            )
+            if not triggered:
+                continue
+
+            if tp.close_pct >= 100:
+                # Full close
+                result = self._close(pos, exit_price=tp.price, reason="tp")
+                return result, None
+
+            # Partial close
+            close_qty = pos.quantity * tp.close_pct / 100
+            remaining_qty = pos.quantity - close_qty
+
+            if pos.side == Side.LONG:
+                pnl = (tp.price - pos.entry_price) * close_qty
+            else:
+                pnl = (pos.entry_price - tp.price) * close_qty
+
+            fee = close_qty * tp.price * self._taker_fee_rate
+            self._total_fees += fee
+            self._closed_pnl += pnl
+
+            new_triggered = [*pos.triggered_tp_indices, idx]
+            remaining_margin = pos.margin * (remaining_qty / pos.quantity)
+
+            # Move SL to entry (breakeven) after first TP
+            new_sl = pos.entry_price if not pos.triggered_tp_indices else pos.stop_loss
+
+            updated_pos = Position(
+                trade_id=pos.trade_id,
+                proposal_id=pos.proposal_id,
+                symbol=pos.symbol,
+                side=pos.side,
+                entry_price=pos.entry_price,
+                quantity=remaining_qty,
+                stop_loss=new_sl,
+                take_profit=pos.take_profit,
+                opened_at=pos.opened_at,
+                risk_pct=pos.risk_pct * (remaining_qty / pos.quantity),
+                leverage=pos.leverage,
+                margin=remaining_margin,
+                liquidation_price=pos.liquidation_price,
+                triggered_tp_indices=new_triggered,
+            )
+
+            self._trade_repo.update_trade_partial_close(
+                trade_id=pos.trade_id,
+                remaining_qty=remaining_qty,
+                remaining_margin=remaining_margin,
+            )
+
+            logger.info(
+                "position_partial_tp",
+                trade_id=pos.trade_id,
+                tp_index=idx,
+                close_qty=close_qty,
+                remaining_qty=remaining_qty,
+                pnl=pnl,
+            )
+
+            self._save_stats_snapshot()
+
+            result = CloseResult(
+                trade_id=pos.trade_id,
+                symbol=pos.symbol,
+                side=pos.side,
+                entry_price=pos.entry_price,
+                exit_price=tp.price,
+                quantity=close_qty,
+                pnl=pnl,
+                fees=fee,
+                reason="tp",
+                partial=True,
+                remaining_quantity=remaining_qty,
+            )
+            return result, updated_pos
+
         return None
 
     def _close(self, pos: Position, *, exit_price: float, reason: str) -> CloseResult:

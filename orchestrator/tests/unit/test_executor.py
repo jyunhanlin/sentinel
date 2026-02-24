@@ -34,7 +34,7 @@ class TestPaperExecutor:
             entry_price=95200.0,
             quantity=0.075,
             stop_loss=93000.0,
-            take_profit=[97000.0],
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)],
             opened_at=MagicMock(),
             risk_pct=1.5,
         )

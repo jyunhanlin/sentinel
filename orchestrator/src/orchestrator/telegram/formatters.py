@@ -368,7 +368,7 @@ def format_position_card(info: dict) -> str:
         lines.append(f"Margin: ${pos.margin:,.2f} | Liq: ${pos.liquidation_price:,.1f}")
     lines.append(f"SL: ${pos.stop_loss:,.1f}")
     if pos.take_profit:
-        tp_str = ", ".join(f"${tp:,.1f}" for tp in pos.take_profit)
+        tp_str = ", ".join(f"${tp.price:,.1f} ({tp.close_pct}%)" for tp in pos.take_profit)
         lines.append(f"TP: {tp_str}")
 
     lines.append(f"PnL: {pnl_sign}${pnl:,.2f} ({pnl_sign}{pnl_pct:.2f}%)")

@@ -138,7 +138,7 @@ class PaperTradeRepository:
         margin: float = 0.0,
         liquidation_price: float = 0.0,
         stop_loss: float = 0.0,
-        take_profit: list[float] | None = None,
+        take_profit: list[dict] | list[float] | None = None,
     ) -> PaperTradeRecord:
         import json
 

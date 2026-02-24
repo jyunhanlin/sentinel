@@ -171,7 +171,7 @@ def test_position_has_leverage_fields():
         entry_price=68000.0,
         quantity=0.1,
         stop_loss=67000.0,
-        take_profit=[70000.0],
+        take_profit=[TakeProfit(price=70000.0, close_pct=100)],
         opened_at=datetime.now(UTC),
         risk_pct=1.0,
         leverage=10,
@@ -450,3 +450,134 @@ class TestManualOperations:
         assert info["unrealized_pnl"] > 0
         assert info["roe_pct"] > 0
         assert info["pnl_pct"] > 0
+
+
+class TestPartialTakeProfit:
+    def _make_engine(self, **kwargs):
+        defaults = dict(
+            initial_equity=10000.0,
+            taker_fee_rate=0.0005,
+            position_sizer=RiskPercentSizer(),
+            trade_repo=MagicMock(),
+            snapshot_repo=MagicMock(),
+            maintenance_margin_rate=0.5,
+        )
+        defaults.update(kwargs)
+        return PaperEngine(**defaults)
+
+    def test_tp1_triggers_partial_close(self):
+        """When price hits TP1 (close_pct=50), only 50% of position should close."""
+        engine = self._make_engine()
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[
+                TakeProfit(price=69000.0, close_pct=50),
+                TakeProfit(price=70000.0, close_pct=100),
+            ],
+        )
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+        original_qty = pos.quantity
+
+        # Price hits TP1
+        results = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=69500.0)
+        assert len(results) == 1
+        assert results[0].reason == "tp"
+        assert results[0].partial is True
+        assert results[0].quantity == pytest.approx(original_qty * 0.5, rel=0.01)
+
+        # Position still open with 50% remaining
+        remaining = engine.get_open_positions()
+        assert len(remaining) == 1
+        assert remaining[0].quantity == pytest.approx(original_qty * 0.5, rel=0.01)
+
+    def test_tp2_triggers_full_close(self):
+        """After TP1 triggered, TP2 (close_pct=100) closes remaining."""
+        engine = self._make_engine()
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[
+                TakeProfit(price=69000.0, close_pct=50),
+                TakeProfit(price=70000.0, close_pct=100),
+            ],
+        )
+        engine.open_position(proposal, current_price=68000.0, leverage=10)
+
+        # TP1 triggers
+        engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=69500.0)
+        assert len(engine.get_open_positions()) == 1
+
+        # TP2 triggers
+        results = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=70500.0)
+        assert len(results) == 1
+        assert results[0].partial is False
+        assert len(engine.get_open_positions()) == 0
+
+    def test_sl_still_closes_full_position(self):
+        """SL should close entire position regardless of TP levels."""
+        engine = self._make_engine()
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[
+                TakeProfit(price=69000.0, close_pct=50),
+                TakeProfit(price=70000.0, close_pct=100),
+            ],
+        )
+        engine.open_position(proposal, current_price=68000.0, leverage=10)
+
+        results = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=66500.0)
+        assert len(results) == 1
+        assert results[0].reason == "sl"
+        assert len(engine.get_open_positions()) == 0
+
+    def test_tp1_moves_sl_to_breakeven(self):
+        """After TP1, stop_loss should move to entry price (breakeven)."""
+        engine = self._make_engine()
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[
+                TakeProfit(price=69000.0, close_pct=50),
+                TakeProfit(price=70000.0, close_pct=100),
+            ],
+        )
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+
+        # TP1 triggers
+        engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=69500.0)
+        remaining = engine.get_open_positions()
+        assert len(remaining) == 1
+        # SL moved to entry price (breakeven)
+        assert remaining[0].stop_loss == pytest.approx(pos.entry_price)
+
+    def test_single_tp_100pct_closes_all(self):
+        """A single TP with close_pct=100 should close full position."""
+        engine = self._make_engine()
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
+        engine.open_position(proposal, current_price=68000.0, leverage=10)
+
+        results = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=70500.0)
+        assert len(results) == 1
+        assert results[0].partial is False
+        assert len(engine.get_open_positions()) == 0
+
+    def test_short_partial_tp(self):
+        """Partial TP works for short positions too."""
+        engine = self._make_engine()
+        proposal = _make_proposal(
+            side=Side.SHORT,
+            stop_loss=70000.0,
+            take_profit=[
+                TakeProfit(price=67000.0, close_pct=50),
+                TakeProfit(price=65000.0, close_pct=100),
+            ],
+        )
+        pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
+        original_qty = pos.quantity
+
+        # TP1 triggers for short (price goes down)
+        results = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=66500.0)
+        assert len(results) == 1
+        assert results[0].partial is True
+        assert results[0].quantity == pytest.approx(original_qty * 0.5, rel=0.01)
