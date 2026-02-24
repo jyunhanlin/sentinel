@@ -349,10 +349,11 @@ class TestFormatPendingApproval:
             expires_at=now + timedelta(minutes=15),
         )
         text = format_pending_approval(approval)
-        assert "PENDING" in text
         assert "BTC/USDT:USDT" in text
         assert "LONG" in text
         assert "93,000" in text or "93000" in text
+        assert "Leverage: 10x" in text
+        assert "close 100%" in text
         assert "15" in text  # timeout mention
 
 
