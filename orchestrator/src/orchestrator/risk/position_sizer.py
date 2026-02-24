@@ -24,3 +24,16 @@ class RiskPercentSizer(PositionSizer):
         risk_amount = equity * (risk_pct / 100)
         price_distance = abs(entry_price - stop_loss)
         return risk_amount / price_distance
+
+
+class MarginSizer:
+    """quantity = margin_usdt × leverage / entry_price"""
+
+    def calculate_from_margin(
+        self, *, margin_usdt: float, leverage: int, entry_price: float,
+    ) -> float:
+        if entry_price <= 0:
+            raise ValueError("entry_price must be positive")
+        if margin_usdt == 0.0:
+            return 0.0
+        return margin_usdt * leverage / entry_price
