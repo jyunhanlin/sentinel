@@ -53,7 +53,7 @@ class TestProposerAgent:
             content=(
                 '{"symbol": "BTC/USDT:USDT", "side": "long", '
                 '"entry": {"type": "market"}, "position_size_risk_pct": 1.5, '
-                '"stop_loss": 93000, "take_profit": [97000], '
+                '"stop_loss": 93000, "take_profit": [{"price": 97000, "close_pct": 100}], '
                 '"time_horizon": "4h", "confidence": 0.75, '
                 '"invalid_if": [], "rationale": "Bullish momentum"}'
             ),
@@ -83,7 +83,7 @@ class TestProposerAgent:
                 '"entry": {"type": "market"}, "position_size_risk_pct": 0, '
                 '"stop_loss": null, "take_profit": [], '
                 '"time_horizon": "4h", "confidence": 0.5, '
-                '"invalid_if": [], "rationale": "No clear signal"}'
+                '"invalid_if": [], "rationale": "No clear signal"}'  # empty take_profit is fine
             ),
             model="test",
             input_tokens=300,

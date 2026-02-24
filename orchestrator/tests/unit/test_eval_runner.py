@@ -18,6 +18,7 @@ class TestEvalRunner:
             MarketInterpretation,
             SentimentReport,
             Side,
+            TakeProfit,
             TradeProposal,
             Trend,
             VolatilityRegime,
@@ -52,7 +53,8 @@ class TestEvalRunner:
         proposer_agent.analyze.return_value = MagicMock(
             output=TradeProposal(
                 symbol="BTC/USDT:USDT", side=Side.LONG, entry=EntryOrder(type="market"),
-                position_size_risk_pct=1.0, stop_loss=93000.0, take_profit=[97000.0],
+                position_size_risk_pct=1.0, stop_loss=93000.0,
+                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
                 time_horizon="4h", confidence=0.7, invalid_if=[], rationale="Bullish",
             ),
             degraded=False, llm_calls=[], messages=[],
@@ -77,6 +79,7 @@ class TestEvalRunner:
             MarketInterpretation,
             SentimentReport,
             Side,
+            TakeProfit,
             TradeProposal,
             Trend,
             VolatilityRegime,
@@ -110,7 +113,8 @@ class TestEvalRunner:
         proposer_agent.analyze.return_value = MagicMock(
             output=TradeProposal(
                 symbol="BTC/USDT:USDT", side=Side.LONG, entry=EntryOrder(type="market"),
-                position_size_risk_pct=1.0, stop_loss=93000.0, take_profit=[97000.0],
+                position_size_risk_pct=1.0, stop_loss=93000.0,
+                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
                 time_horizon="4h", confidence=0.7, invalid_if=[], rationale="wrong",
             ),
             degraded=False, llm_calls=[], messages=[],

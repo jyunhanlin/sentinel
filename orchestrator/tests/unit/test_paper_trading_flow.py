@@ -5,11 +5,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from orchestrator.exchange.paper_engine import PaperEngine
-from orchestrator.models import EntryOrder, Side, TradeProposal
+from orchestrator.models import EntryOrder, Side, TakeProfit, TradeProposal
 from orchestrator.risk.position_sizer import RiskPercentSizer
 
 
-def _make_proposal(*, stop_loss: float, take_profit: list[float]) -> TradeProposal:
+def _make_proposal(*, stop_loss: float, take_profit: list[TakeProfit]) -> TradeProposal:
     return TradeProposal(
         symbol="BTC/USDT:USDT",
         side=Side.LONG,
@@ -41,7 +41,10 @@ class TestFullPaperTradingFlow:
         engine = _make_engine()
 
         # 1. Open position with 10x leverage
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
         assert pos.leverage == 10
         assert pos.margin > 0
@@ -77,7 +80,10 @@ class TestFullPaperTradingFlow:
         """Position at high leverage gets liquidated, losing full margin."""
         engine = _make_engine()
 
-        proposal = _make_proposal(stop_loss=60000.0, take_profit=[80000.0])
+        proposal = _make_proposal(
+            stop_loss=60000.0,
+            take_profit=[TakeProfit(price=80000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=50)
         liq_price = pos.liquidation_price
         margin = pos.margin
@@ -95,7 +101,10 @@ class TestFullPaperTradingFlow:
         """SL triggers before liquidation at moderate leverage."""
         engine = _make_engine()
 
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
 
         # SL at 67000 is above liquidation price (~61540 at 10x)
@@ -114,7 +123,10 @@ class TestFullPaperTradingFlow:
         """Multiple positions correctly track used/available margin."""
         engine = _make_engine(initial_equity=100000.0)
 
-        proposal1 = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal1 = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos1 = engine.open_position(proposal1, current_price=68000.0, leverage=10)
         margin1 = pos1.margin
 
@@ -124,7 +136,7 @@ class TestFullPaperTradingFlow:
             entry=EntryOrder(type="market"),
             position_size_risk_pct=1.0,
             stop_loss=3600.0,
-            take_profit=[3200.0],
+            take_profit=[TakeProfit(price=3200.0, close_pct=100)],
             time_horizon="4h",
             confidence=0.7,
             invalid_if=[],
@@ -141,7 +153,10 @@ class TestFullPaperTradingFlow:
         """get_position_with_pnl returns correct ROE% amplified by leverage."""
         engine = _make_engine()
 
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
 
         # Price up 1% = $680

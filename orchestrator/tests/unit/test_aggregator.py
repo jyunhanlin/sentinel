@@ -1,5 +1,5 @@
 
-from orchestrator.models import EntryOrder, Side, TradeProposal
+from orchestrator.models import EntryOrder, Side, TakeProfit, TradeProposal
 from orchestrator.pipeline.aggregator import aggregate_proposal
 
 
@@ -11,7 +11,7 @@ class TestAggregateProposal:
             entry=EntryOrder(type="market"),
             position_size_risk_pct=1.5,
             stop_loss=93000.0,
-            take_profit=[97000.0],
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)],
             time_horizon="4h",
             confidence=0.75,
             invalid_if=[],
@@ -28,7 +28,7 @@ class TestAggregateProposal:
             entry=EntryOrder(type="market"),
             position_size_risk_pct=1.5,
             stop_loss=97000.0,  # SL above current price for long = wrong
-            take_profit=[99000.0],
+            take_profit=[TakeProfit(price=99000.0, close_pct=100)],
             time_horizon="4h",
             confidence=0.75,
             invalid_if=[],
@@ -45,7 +45,7 @@ class TestAggregateProposal:
             entry=EntryOrder(type="market"),
             position_size_risk_pct=1.5,
             stop_loss=93000.0,  # SL below current price for short = wrong
-            take_profit=[91000.0],
+            take_profit=[TakeProfit(price=91000.0, close_pct=100)],
             time_horizon="4h",
             confidence=0.75,
             invalid_if=[],
@@ -78,7 +78,7 @@ class TestAggregateProposal:
             entry=EntryOrder(type="market"),
             position_size_risk_pct=1.5,
             stop_loss=None,  # No SL for a directional trade
-            take_profit=[97000.0],
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)],
             time_horizon="4h",
             confidence=0.75,
             invalid_if=[],

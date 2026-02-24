@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from orchestrator.exchange.paper_engine import CloseResult
-from orchestrator.models import EntryOrder, Side, TradeProposal
+from orchestrator.models import EntryOrder, Side, TakeProfit, TradeProposal
 from orchestrator.pipeline.runner import PipelineResult
 from orchestrator.risk.checker import RiskResult
 from orchestrator.storage.models import PaperTradeRecord, TradeProposalRecord
@@ -65,7 +65,7 @@ class TestFormatProposal:
                 entry=EntryOrder(type="market"),
                 position_size_risk_pct=1.5,
                 stop_loss=93000.0,
-                take_profit=[97000.0],
+                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
                 time_horizon="4h",
                 confidence=0.75,
                 invalid_if=[],
@@ -111,7 +111,7 @@ class TestFormatProposal:
                 entry=EntryOrder(type="market"),
                 position_size_risk_pct=1.5,
                 stop_loss=97000.0,
-                take_profit=[99000.0],
+                take_profit=[TakeProfit(price=99000.0, close_pct=100)],
                 time_horizon="4h",
                 confidence=0.75,
                 invalid_if=[],
@@ -136,7 +136,7 @@ class TestFormatStatus:
                     entry=EntryOrder(type="market"),
                     position_size_risk_pct=1.0,
                     stop_loss=93000.0,
-                    take_profit=[97000.0],
+                    take_profit=[TakeProfit(price=97000.0, close_pct=100)],
                     time_horizon="4h",
                     confidence=0.7,
                     invalid_if=[],
@@ -337,7 +337,7 @@ class TestFormatPendingApproval:
                 entry=EntryOrder(type="market"),
                 position_size_risk_pct=1.5,
                 stop_loss=93000.0,
-                take_profit=[97000.0],
+                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
                 time_horizon="4h",
                 confidence=0.75,
                 invalid_if=[],
@@ -413,7 +413,7 @@ class TestApprovalCallback:
                 entry=EntryOrder(type="market"),
                 position_size_risk_pct=1.5,
                 stop_loss=93000.0,
-                take_profit=[97000.0],
+                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
                 time_horizon="4h",
                 confidence=0.75,
                 invalid_if=[],
@@ -476,7 +476,7 @@ class TestApprovalCallback:
                 entry=EntryOrder(type="market"),
                 position_size_risk_pct=1.5,
                 stop_loss=93000.0,
-                take_profit=[97000.0],
+                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
                 time_horizon="4h",
                 confidence=0.75,
                 invalid_if=[],
@@ -597,7 +597,7 @@ def _make_pipeline_result():
             symbol="BTC/USDT:USDT", side=Side.LONG,
             entry=EntryOrder(type="market"),
             position_size_risk_pct=1.0, stop_loss=93000.0,
-            take_profit=[97000.0], time_horizon="4h",
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)], time_horizon="4h",
             confidence=0.7, invalid_if=[], rationale="test",
         ),
     )
@@ -1221,7 +1221,7 @@ class TestApproveWithLeverage:
         approval.proposal.symbol = "BTC/USDT:USDT"
         approval.proposal.side.value = "long"
         approval.proposal.stop_loss = 67000.0
-        approval.proposal.take_profit = [70000.0]
+        approval.proposal.take_profit = [TakeProfit(price=70000.0, close_pct=100)]
         approval.proposal.position_size_risk_pct = 1.0
         approval.snapshot_price = 68000.0
         bot._approval_manager.get.return_value = approval
@@ -1257,7 +1257,7 @@ class TestApproveWithLeverage:
         approval.proposal.symbol = "BTC/USDT:USDT"
         approval.proposal.side = Side.LONG
         approval.proposal.stop_loss = 67000.0
-        approval.proposal.take_profit = [70000.0]
+        approval.proposal.take_profit = [TakeProfit(price=70000.0, close_pct=100)]
         approval.proposal.position_size_risk_pct = 1.0
         approval.snapshot_price = 68000.0
         bot._approval_manager.get.return_value = approval
@@ -1295,7 +1295,7 @@ class TestApproveWithLeverage:
         approval.proposal.symbol = "BTC/USDT:USDT"
         approval.proposal.side.value = "long"
         approval.proposal.stop_loss = 67000.0
-        approval.proposal.take_profit = [70000.0]
+        approval.proposal.take_profit = [TakeProfit(price=70000.0, close_pct=100)]
         approval.proposal.position_size_risk_pct = 1.0
         approval.snapshot_price = 68000.0
         bot._approval_manager.get.return_value = approval

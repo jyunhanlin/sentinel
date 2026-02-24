@@ -1,5 +1,5 @@
 
-from orchestrator.models import EntryOrder, Side, TradeProposal
+from orchestrator.models import EntryOrder, Side, TakeProfit, TradeProposal
 from orchestrator.risk.checker import RiskChecker
 
 
@@ -17,7 +17,7 @@ def _make_proposal(
         entry=EntryOrder(type="market"),
         position_size_risk_pct=risk_pct,
         stop_loss=stop_loss,
-        take_profit=[97000.0],
+        take_profit=[TakeProfit(price=97000.0, close_pct=100)],
         time_horizon="4h",
         confidence=0.7,
         invalid_if=invalid_if or [],

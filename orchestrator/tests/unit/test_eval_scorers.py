@@ -6,6 +6,7 @@ from orchestrator.models import (
     EntryOrder,
     SentimentReport,
     Side,
+    TakeProfit,
     TradeProposal,
 )
 
@@ -15,7 +16,8 @@ class TestRuleScorer:
         scorer = RuleScorer()
         proposal = TradeProposal(
             symbol="BTC/USDT:USDT", side=Side.LONG, entry=EntryOrder(type="market"),
-            position_size_risk_pct=1.0, stop_loss=93000.0, take_profit=[97000.0],
+            position_size_risk_pct=1.0, stop_loss=93000.0,
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)],
             time_horizon="4h", confidence=0.7, invalid_if=[], rationale="test",
         )
         expected = ExpectedProposal(side=["long"])
@@ -27,7 +29,8 @@ class TestRuleScorer:
         scorer = RuleScorer()
         proposal = TradeProposal(
             symbol="BTC/USDT:USDT", side=Side.LONG, entry=EntryOrder(type="market"),
-            position_size_risk_pct=1.0, stop_loss=93000.0, take_profit=[97000.0],
+            position_size_risk_pct=1.0, stop_loss=93000.0,
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)],
             time_horizon="4h", confidence=0.7, invalid_if=[], rationale="test",
         )
         expected = ExpectedProposal(side=["short", "flat"])

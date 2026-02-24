@@ -50,9 +50,15 @@ class KeyLevel(BaseModel, frozen=True):
     price: float
 
 
+class TakeProfit(BaseModel, frozen=True):
+    price: float
+    close_pct: int = Field(ge=1, le=100)
+
+
 class MarketInterpretation(BaseModel, frozen=True):
     trend: Trend
     volatility_regime: VolatilityRegime
+    volatility_pct: float = Field(ge=0.0, default=0.0)
     key_levels: list[KeyLevel]
     risk_flags: list[str]
 
@@ -72,7 +78,8 @@ class TradeProposal(BaseModel, frozen=True):
     entry: EntryOrder
     position_size_risk_pct: float = Field(ge=0.0)
     stop_loss: float | None = None
-    take_profit: list[float]
+    take_profit: list[TakeProfit]
+    suggested_leverage: int = Field(ge=1, le=50, default=10)
     time_horizon: str
     confidence: float = Field(ge=0.0, le=1.0)
     invalid_if: list[str]

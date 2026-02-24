@@ -138,6 +138,8 @@ class PaperEngine:
         open_fee = quantity * current_price * self._taker_fee_rate
         self._total_fees += open_fee
 
+        tp_prices = [tp.price for tp in proposal.take_profit]
+
         position = Position(
             trade_id=str(uuid.uuid4()),
             proposal_id=proposal.proposal_id,
@@ -146,7 +148,7 @@ class PaperEngine:
             entry_price=current_price,
             quantity=quantity,
             stop_loss=stop_loss,
-            take_profit=proposal.take_profit,
+            take_profit=tp_prices,
             opened_at=datetime.now(UTC),
             risk_pct=proposal.position_size_risk_pct,
             leverage=leverage,
@@ -167,7 +169,7 @@ class PaperEngine:
             margin=margin,
             liquidation_price=liquidation_price,
             stop_loss=stop_loss,
-            take_profit=proposal.take_profit,
+            take_profit=tp_prices,
         )
 
         logger.info(

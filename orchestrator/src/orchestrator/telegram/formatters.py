@@ -96,7 +96,7 @@ def format_proposal(result: PipelineResult) -> str:
         if p.stop_loss is not None:
             lines.append(f"SL:    {p.stop_loss:,.1f}")
         if p.take_profit:
-            tp_str = ", ".join(f"{tp:,.1f}" for tp in p.take_profit)
+            tp_str = ", ".join(f"{tp.price:,.1f}" for tp in p.take_profit)
             lines.append(f"TP:    {tp_str}")
 
     lines.append("")
@@ -133,7 +133,7 @@ def format_pending_approval(approval: PendingApproval) -> str:
     if p.stop_loss is not None:
         lines.append(f"SL:    ${p.stop_loss:,.1f}")
     if p.take_profit:
-        tp_str = ", ".join(f"${tp:,.1f}" for tp in p.take_profit)
+        tp_str = ", ".join(f"${tp.price:,.1f}" for tp in p.take_profit)
         lines.append(f"TP:    {tp_str}")
 
     lines.append(f"\nConfidence: {p.confidence:.0%}")
@@ -226,7 +226,7 @@ def format_status(results: list[PipelineResult]) -> str:
                 f"${p.stop_loss:,.1f}" if p.stop_loss is not None else "—"
             )
             tp_str = (
-                ", ".join(f"${tp:,.1f}" for tp in p.take_profit)
+                ", ".join(f"${tp.price:,.1f}" for tp in p.take_profit)
                 if p.take_profit
                 else "—"
             )

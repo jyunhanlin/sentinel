@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from orchestrator.execution.executor import ExecutionResult, LiveExecutor
-from orchestrator.models import EntryOrder, Side, TradeProposal
+from orchestrator.models import EntryOrder, Side, TakeProfit, TradeProposal
 
 
 def _make_proposal():
@@ -13,7 +13,7 @@ def _make_proposal():
         entry=EntryOrder(type="market"),
         position_size_risk_pct=1.5,
         stop_loss=93000.0,
-        take_profit=[97000.0],
+        take_profit=[TakeProfit(price=97000.0, close_pct=100)],
         time_horizon="4h",
         confidence=0.75,
         invalid_if=[],
@@ -93,7 +93,7 @@ class TestLiveExecutor:
             side="long",
             quantity=0.075,
             stop_loss=93000.0,
-            take_profit=[97000.0],
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)],
         )
         assert len(ids) == 2
         assert "sl-001" in ids

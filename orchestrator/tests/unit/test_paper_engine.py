@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from orchestrator.exchange.paper_engine import PaperEngine, Position
-from orchestrator.models import EntryOrder, Side, TradeProposal
+from orchestrator.models import EntryOrder, Side, TakeProfit, TradeProposal
 from orchestrator.risk.position_sizer import RiskPercentSizer
 from orchestrator.stats.calculator import StatsCalculator
 
@@ -14,7 +14,7 @@ def _make_proposal(
     side: Side = Side.LONG,
     risk_pct: float = 1.5,
     stop_loss: float = 93000.0,
-    take_profit: list[float] | None = None,
+    take_profit: list[TakeProfit] | None = None,
 ) -> TradeProposal:
     return TradeProposal(
         symbol="BTC/USDT:USDT",
@@ -22,7 +22,7 @@ def _make_proposal(
         entry=EntryOrder(type="market"),
         position_size_risk_pct=risk_pct,
         stop_loss=stop_loss,
-        take_profit=take_profit or [97000.0],
+        take_profit=take_profit or [TakeProfit(price=97000.0, close_pct=100)],
         time_horizon="4h",
         confidence=0.7,
         invalid_if=[],
@@ -67,7 +67,7 @@ class TestPaperEngine:
     def test_check_tp_triggers_close(self):
         engine = self._make_engine()
         engine.open_position(
-            _make_proposal(take_profit=[97000.0]),
+            _make_proposal(take_profit=[TakeProfit(price=97000.0, close_pct=100)]),
             current_price=95000.0,
         )
         # Price rises above TP
@@ -78,7 +78,10 @@ class TestPaperEngine:
     def test_check_sl_short_position(self):
         engine = self._make_engine()
         engine.open_position(
-            _make_proposal(side=Side.SHORT, stop_loss=97000.0, take_profit=[93000.0]),
+            _make_proposal(
+                side=Side.SHORT, stop_loss=97000.0,
+                take_profit=[TakeProfit(price=93000.0, close_pct=100)],
+            ),
             current_price=95000.0,
         )
         # Price rises above SL for short
@@ -103,7 +106,10 @@ class TestPaperEngine:
     def test_no_trigger_when_price_between_sl_tp(self):
         engine = self._make_engine()
         engine.open_position(
-            _make_proposal(stop_loss=93000.0, take_profit=[97000.0]),
+            _make_proposal(
+                stop_loss=93000.0,
+                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
+            ),
             current_price=95000.0,
         )
         closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=95500.0)
@@ -131,7 +137,8 @@ class TestPaperEngineStats:
         # Open and close a position
         proposal = TradeProposal(
             symbol="BTC/USDT:USDT", side=Side.LONG, entry=EntryOrder(type="market"),
-            position_size_risk_pct=1.0, stop_loss=93000.0, take_profit=[97000.0],
+            position_size_risk_pct=1.0, stop_loss=93000.0,
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)],
             time_horizon="4h", confidence=0.7, invalid_if=[], rationale="test",
         )
         engine.open_position(proposal, current_price=95000.0)
@@ -240,7 +247,10 @@ class TestOpenPositionWithLeverage:
 
     def test_open_position_with_leverage(self):
         engine = self._make_engine()
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
         assert pos.leverage == 10
         assert pos.margin == pytest.approx(pos.quantity * 68000.0 / 10)
@@ -257,7 +267,10 @@ class TestOpenPositionWithLeverage:
         # Position sizer: qty = (10 * 0.015) / 1000 = 0.00015, margin = 0.00015 * 68000 / 1 = 10.2
         # At leverage=1, margin > equity
         engine = self._make_engine(initial_equity=10.0)
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         with pytest.raises(ValueError, match="Insufficient margin"):
             engine.open_position(proposal, current_price=68000.0, leverage=1)
 
@@ -275,7 +288,10 @@ class TestLiquidation:
 
     def test_liquidation_triggers_before_sl_long(self):
         engine = self._make_engine()
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         engine.open_position(proposal, current_price=68000.0, leverage=10)
         # Liq price ~61540, SL=67000. Price crashes below liq
         closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=61000.0)
@@ -284,7 +300,10 @@ class TestLiquidation:
 
     def test_sl_triggers_when_above_liq_long(self):
         engine = self._make_engine()
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         engine.open_position(proposal, current_price=68000.0, leverage=10)
         # Price hits SL but above liq
         closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=66500.0)
@@ -294,7 +313,8 @@ class TestLiquidation:
     def test_liquidation_short(self):
         engine = self._make_engine()
         proposal = _make_proposal(
-            side=Side.SHORT, stop_loss=70000.0, take_profit=[65000.0],
+            side=Side.SHORT, stop_loss=70000.0,
+            take_profit=[TakeProfit(price=65000.0, close_pct=100)],
         )
         engine.open_position(proposal, current_price=68000.0, leverage=10)
         # Liq price ~74460, push above
@@ -304,7 +324,10 @@ class TestLiquidation:
 
     def test_liquidation_pnl_is_negative_margin(self):
         engine = self._make_engine()
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
         margin = pos.margin
         closed = engine.check_sl_tp(symbol="BTC/USDT:USDT", current_price=61000.0)
@@ -327,7 +350,10 @@ class TestManualOperations:
 
     def test_add_to_position(self):
         engine = self._make_engine()
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
         old_qty = pos.quantity
         old_entry = pos.entry_price
@@ -343,7 +369,10 @@ class TestManualOperations:
 
     def test_reduce_position_50pct(self):
         engine = self._make_engine()
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
         original_qty = pos.quantity
 
@@ -358,7 +387,10 @@ class TestManualOperations:
 
     def test_close_position(self):
         engine = self._make_engine()
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
 
         result = engine.close_position(
@@ -369,7 +401,10 @@ class TestManualOperations:
 
     def test_reduce_100pct_closes_position(self):
         engine = self._make_engine()
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
 
         engine.reduce_position(
@@ -386,7 +421,11 @@ class TestManualOperations:
             snapshot_repo=MagicMock(),
             maintenance_margin_rate=0.5,
         )
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0], risk_pct=0.5)
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+            risk_pct=0.5,
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
 
         with pytest.raises(ValueError, match="Insufficient margin"):
@@ -401,7 +440,10 @@ class TestManualOperations:
 
     def test_get_position_with_pnl_long(self):
         engine = self._make_engine()
-        proposal = _make_proposal(stop_loss=67000.0, take_profit=[70000.0])
+        proposal = _make_proposal(
+            stop_loss=67000.0,
+            take_profit=[TakeProfit(price=70000.0, close_pct=100)],
+        )
         pos = engine.open_position(proposal, current_price=68000.0, leverage=10)
 
         info = engine.get_position_with_pnl(trade_id=pos.trade_id, current_price=69000.0)

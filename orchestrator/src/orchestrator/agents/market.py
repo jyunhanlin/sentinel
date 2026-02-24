@@ -48,6 +48,7 @@ class MarketAgent(BaseAgent[MarketInterpretation]):
         return MarketInterpretation(
             trend=Trend.RANGE,
             volatility_regime=VolatilityRegime.MEDIUM,
+            volatility_pct=0.0,
             key_levels=[],
             risk_flags=["analysis_degraded"],
         )

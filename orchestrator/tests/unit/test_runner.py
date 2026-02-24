@@ -10,6 +10,7 @@ from orchestrator.models import (
     MarketInterpretation,
     SentimentReport,
     Side,
+    TakeProfit,
     TradeProposal,
     Trend,
     VolatilityRegime,
@@ -22,7 +23,8 @@ def _make_proposal(*, side=Side.LONG, risk_pct=1.0):
     return TradeProposal(
         symbol="BTC/USDT:USDT", side=side, entry=EntryOrder(type="market"),
         position_size_risk_pct=risk_pct, stop_loss=93000.0,
-        take_profit=[97000.0], time_horizon="4h", confidence=0.7,
+        take_profit=[TakeProfit(price=97000.0, close_pct=100)],
+        time_horizon="4h", confidence=0.7,
         invalid_if=[], rationale="test",
     )
 
@@ -75,7 +77,7 @@ class TestPipelineRunner:
                 entry=EntryOrder(type="market"),
                 position_size_risk_pct=1.5,
                 stop_loss=93000.0,
-                take_profit=[97000.0],
+                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
                 time_horizon="4h",
                 confidence=0.75,
                 invalid_if=[],
@@ -140,7 +142,7 @@ class TestPipelineRunner:
                 entry=EntryOrder(type="market"),
                 position_size_risk_pct=1.5,
                 stop_loss=97000.0,  # above price = invalid for long
-                take_profit=[99000.0],
+                take_profit=[TakeProfit(price=99000.0, close_pct=100)],
                 time_horizon="4h",
                 confidence=0.75,
                 invalid_if=[],

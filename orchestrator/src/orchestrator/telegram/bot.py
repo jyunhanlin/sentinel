@@ -798,7 +798,7 @@ class SentinelBot:
 
         side_str = p.side.value.upper()
         tp_str = (
-            ", ".join(f"${tp:,.1f}" for tp in p.take_profit)
+            ", ".join(f"${tp.price:,.1f}" for tp in p.take_profit)
             if p.take_profit
             else "—"
         )
@@ -842,11 +842,12 @@ class SentinelBot:
                     approval.proposal.symbol
                 )
 
+            tp_prices = [tp.price for tp in approval.proposal.take_profit]
             stale_reason = _check_stale_sl_tp(
                 side=approval.proposal.side.value,
                 current_price=current_price,
                 stop_loss=approval.proposal.stop_loss,
-                take_profit=approval.proposal.take_profit,
+                take_profit=tp_prices,
             )
             if stale_reason:
                 self._approval_manager.reject(approval_id)
@@ -871,7 +872,7 @@ class SentinelBot:
                 side=approval.proposal.side.value,
                 quantity=result.quantity,
                 stop_loss=approval.proposal.stop_loss or 0.0,
-                take_profit=approval.proposal.take_profit,
+                take_profit=tp_prices,
             )
 
             text = format_execution_result(result)
