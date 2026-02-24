@@ -187,6 +187,80 @@ class PaperEngine:
 
         return position
 
+    def open_position_with_quantity(
+        self,
+        proposal: TradeProposal,
+        current_price: float,
+        *,
+        leverage: int = 1,
+        quantity: float,
+        margin: float,
+    ) -> Position:
+        """Open position with pre-calculated quantity and margin (USDT margin-based sizing)."""
+        if proposal.stop_loss is None:
+            raise ValueError(
+                f"Cannot open position for {proposal.symbol}: stop_loss is required"
+            )
+
+        if margin > self.available_balance:
+            raise ValueError(
+                f"Insufficient margin: need ${margin:,.2f}, "
+                f"available ${self.available_balance:,.2f}"
+            )
+
+        liquidation_price = self.calculate_liquidation_price(
+            entry_price=current_price, leverage=leverage, side=proposal.side,
+        )
+
+        open_fee = quantity * current_price * self._taker_fee_rate
+        self._total_fees += open_fee
+
+        position = Position(
+            trade_id=str(uuid.uuid4()),
+            proposal_id=proposal.proposal_id,
+            symbol=proposal.symbol,
+            side=proposal.side,
+            entry_price=current_price,
+            quantity=quantity,
+            stop_loss=proposal.stop_loss,
+            take_profit=list(proposal.take_profit),
+            opened_at=datetime.now(UTC),
+            risk_pct=proposal.position_size_risk_pct,
+            leverage=leverage,
+            margin=margin,
+            liquidation_price=liquidation_price,
+        )
+        self._positions.append(position)
+
+        self._trade_repo.save_trade(
+            trade_id=position.trade_id,
+            proposal_id=position.proposal_id,
+            symbol=position.symbol,
+            side=position.side.value,
+            entry_price=position.entry_price,
+            quantity=position.quantity,
+            risk_pct=position.risk_pct,
+            leverage=leverage,
+            margin=margin,
+            liquidation_price=liquidation_price,
+            stop_loss=proposal.stop_loss,
+            take_profit=[tp.model_dump() for tp in proposal.take_profit],
+        )
+
+        logger.info(
+            "position_opened_margin",
+            trade_id=position.trade_id,
+            symbol=position.symbol,
+            side=position.side,
+            quantity=quantity,
+            entry_price=current_price,
+            leverage=leverage,
+            margin=margin,
+            fee=open_fee,
+        )
+
+        return position
+
     def add_to_position(
         self, *, trade_id: str, risk_pct: float, current_price: float,
     ) -> Position:

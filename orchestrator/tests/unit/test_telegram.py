@@ -1250,8 +1250,8 @@ class TestApproveWithLeverage:
         assert any("leverage:" in d for d in all_data)
 
     @pytest.mark.asyncio
-    async def test_leverage_selection_shows_confirmation_card(self):
-        """After selecting leverage, bot should show confirmation with margin/liq details."""
+    async def test_leverage_selection_shows_margin_buttons(self):
+        """After selecting leverage, bot should show margin amount selection."""
         bot = self._make_bot()
         approval = MagicMock()
         approval.approval_id = "abc123"
@@ -1262,10 +1262,6 @@ class TestApproveWithLeverage:
         approval.proposal.position_size_risk_pct = 1.0
         approval.snapshot_price = 68000.0
         bot._approval_manager.get.return_value = approval
-        bot._data_fetcher.fetch_current_price = AsyncMock(return_value=68000.0)
-        bot._paper_engine.calculate_margin.return_value = 680.0
-        bot._paper_engine.calculate_liquidation_price.return_value = 61540.0
-        bot._paper_engine._position_sizer.calculate.return_value = 0.1
 
         query = self._make_callback_query("leverage:abc123:10")
         update = MagicMock()
@@ -1278,14 +1274,14 @@ class TestApproveWithLeverage:
         query.edit_message_text.assert_called_once()
         call_kwargs = query.edit_message_text.call_args
         text = call_kwargs.kwargs.get("text", call_kwargs.args[0] if call_kwargs.args else "")
-        assert "Margin" in text
-        assert "Liq" in text
+        assert "SELECT MARGIN" in text
+        assert "10x" in text
         markup = call_kwargs.kwargs.get("reply_markup")
         all_data = [
             btn.callback_data for row in markup.inline_keyboard for btn in row
             if btn.callback_data
         ]
-        assert any("confirm_leverage:" in d for d in all_data)
+        assert any("margin:" in d for d in all_data)
         assert any("cancel:" in d for d in all_data)
 
     @pytest.mark.asyncio

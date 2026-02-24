@@ -42,6 +42,8 @@ class PipelineResult(BaseModel, frozen=True):
     proposer_degraded: bool = False
     risk_result: RiskResult | None = None
     close_results: list[CloseResult] = []
+    sentiment: SentimentReport | None = None
+    market: MarketInterpretation | None = None
 
 
 class PipelineRunner:
@@ -132,6 +134,8 @@ class PipelineRunner:
                     sentiment_degraded=sentiment_result.degraded,
                     market_degraded=market_result.degraded,
                     proposer_degraded=proposer_result.degraded,
+                    sentiment=sentiment_result.output,
+                    market=market_result.output,
                 )
 
             # Step 5: Risk check
@@ -182,6 +186,8 @@ class PipelineRunner:
                         market_degraded=market_result.degraded,
                         proposer_degraded=proposer_result.degraded,
                         risk_result=risk_result,
+                        sentiment=sentiment_result.output,
+                        market=market_result.output,
                         )
 
                 # Step 6: Open position or create pending approval
@@ -213,6 +219,8 @@ class PipelineRunner:
                             sentiment_degraded=sentiment_result.degraded,
                             market_degraded=market_result.degraded,
                             proposer_degraded=proposer_result.degraded,
+                            sentiment=sentiment_result.output,
+                            market=market_result.output,
                                 )
                     else:
                         # Auto mode: execute immediately
@@ -240,6 +248,8 @@ class PipelineRunner:
                 market_degraded=market_result.degraded,
                 proposer_degraded=proposer_result.degraded,
                 risk_result=risk_result,
+                sentiment=sentiment_result.output,
+                market=market_result.output,
             )
 
         except Exception as e:

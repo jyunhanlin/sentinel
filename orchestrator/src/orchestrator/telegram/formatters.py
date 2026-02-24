@@ -163,7 +163,8 @@ def format_pending_approval(
 
     for i, tp in enumerate(p.take_profit, 1):
         tp_pct = (tp.price - entry_price) / entry_price * 100
-        lines.append(f"\u2705 TP{i}:    ${tp.price:,.1f} ({tp_pct:+.1f}%) \u2192 close {tp.close_pct}%")
+        tp_line = f"${tp.price:,.1f} ({tp_pct:+.1f}%) \u2192 close {tp.close_pct}%"
+        lines.append(f"\u2705 TP{i}: {tp_line}")
 
     lines.append("\u2500" * 22)
 
@@ -185,10 +186,18 @@ def format_pending_approval(
     # Market analysis section
     if market:
         lines.append("")
-        trend_str = market.trend.value.upper() if hasattr(market.trend, "value") else str(market.trend).upper()
-        vol_regime = market.volatility_regime.value.upper() if hasattr(market.volatility_regime, "value") else str(market.volatility_regime).upper()
+        trend_str = (
+            market.trend.value.upper()
+            if hasattr(market.trend, "value")
+            else str(market.trend).upper()
+        )
+        vol_regime = (
+            market.volatility_regime.value.upper()
+            if hasattr(market.volatility_regime, "value")
+            else str(market.volatility_regime).upper()
+        )
         vol_pct = f" ({market.volatility_pct:.1f}%)" if hasattr(market, "volatility_pct") else ""
-        lines.append(f"\U0001f4ca Market:")
+        lines.append("\U0001f4ca Market:")
         lines.append(f"Trend: {trend_str} | Vol: {vol_regime}{vol_pct}")
 
         supports = [kl for kl in market.key_levels if kl.type == "support"]
@@ -201,7 +210,7 @@ def format_pending_approval(
         if market.risk_flags:
             lines.append(f"\n\u26a0\ufe0f Risk: {', '.join(market.risk_flags)}")
         else:
-            lines.append(f"\n\u26a0\ufe0f Risk: No flags")
+            lines.append("\n\u26a0\ufe0f Risk: No flags")
 
     # Sentiment section
     if sentiment:

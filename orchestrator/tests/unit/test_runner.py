@@ -29,6 +29,21 @@ def _make_proposal(*, side=Side.LONG, risk_pct=1.0):
     )
 
 
+def _make_sentiment():
+    return SentimentReport(
+        sentiment_score=50, key_events=[], sources=["test"], confidence=0.5
+    )
+
+
+def _make_market():
+    return MarketInterpretation(
+        trend=Trend.RANGE,
+        volatility_regime=VolatilityRegime.LOW,
+        key_levels=[],
+        risk_flags=[],
+    )
+
+
 def make_snapshot() -> MarketSnapshot:
     return MarketSnapshot(
         symbol="BTC/USDT:USDT",
@@ -257,11 +272,11 @@ class TestPipelineRunnerWithRisk:
 
         sentiment_agent = AsyncMock()
         sentiment_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
         )
         market_agent = AsyncMock()
         market_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+            output=_make_market(), degraded=False, llm_calls=[], messages=[],
         )
         proposer_agent = AsyncMock()
         proposer_agent.analyze.return_value = MagicMock(
@@ -307,11 +322,11 @@ class TestPipelineRunnerWithRisk:
 
         sentiment_agent = AsyncMock()
         sentiment_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
         )
         market_agent = AsyncMock()
         market_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+            output=_make_market(), degraded=False, llm_calls=[], messages=[],
         )
         proposer_agent = AsyncMock()
         proposer_agent.analyze.return_value = MagicMock(
@@ -364,11 +379,11 @@ class TestPipelineRunnerApproval:
 
         sentiment_agent = AsyncMock()
         sentiment_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
         )
         market_agent = AsyncMock()
         market_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+            output=_make_market(), degraded=False, llm_calls=[], messages=[],
         )
         proposer_agent = AsyncMock()
         proposer_agent.analyze.return_value = MagicMock(
@@ -420,11 +435,11 @@ class TestPipelineRunnerApproval:
         )
         sentiment_agent = AsyncMock()
         sentiment_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
         )
         market_agent = AsyncMock()
         market_agent.analyze.return_value = MagicMock(
-            output=MagicMock(), degraded=False, llm_calls=[], messages=[],
+            output=_make_market(), degraded=False, llm_calls=[], messages=[],
         )
         proposer_agent = AsyncMock()
         proposer_agent.analyze.return_value = MagicMock(

@@ -34,6 +34,7 @@ class OrderExecutor(ABC):
     @abstractmethod
     async def execute_entry(
         self, proposal: TradeProposal, current_price: float, leverage: int = 1,
+        margin_usdt: float | None = None,
     ) -> ExecutionResult: ...
 
     @abstractmethod
@@ -57,8 +58,22 @@ class PaperExecutor(OrderExecutor):
 
     async def execute_entry(
         self, proposal: TradeProposal, current_price: float, leverage: int = 1,
+        margin_usdt: float | None = None,
     ) -> ExecutionResult:
-        position = self._paper_engine.open_position(proposal, current_price, leverage=leverage)
+        if margin_usdt is not None:
+            from orchestrator.risk.position_sizer import MarginSizer
+
+            sizer = MarginSizer()
+            qty = sizer.calculate_from_margin(
+                margin_usdt=margin_usdt, leverage=leverage, entry_price=current_price,
+            )
+            # Override position sizing by temporarily setting quantity directly
+            position = self._paper_engine.open_position_with_quantity(
+                proposal, current_price, leverage=leverage,
+                quantity=qty, margin=margin_usdt,
+            )
+        else:
+            position = self._paper_engine.open_position(proposal, current_price, leverage=leverage)
         logger.info(
             "paper_execution",
             trade_id=position.trade_id,
@@ -125,6 +140,7 @@ class LiveExecutor(OrderExecutor):
 
     async def execute_entry(
         self, proposal: TradeProposal, current_price: float, leverage: int = 1,
+        margin_usdt: float | None = None,
     ) -> ExecutionResult:
         if proposal.stop_loss is None:
             raise ValueError(

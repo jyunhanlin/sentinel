@@ -60,7 +60,10 @@ class PipelineScheduler:
         async def _run_symbol(symbol: str) -> PipelineResult:
             logger.info("pipeline_running", symbol=symbol, model=effective_model, source=source)
             result = await self._runner.execute(symbol, model_override=model_override)
-            logger.info("pipeline_done", symbol=symbol, model=effective_model, status=result.status, source=source)
+            logger.info(
+                "pipeline_done", symbol=symbol,
+                model=effective_model, status=result.status, source=source,
+            )
             if notify and self._on_result is not None:
                 try:
                     await self._on_result(result)

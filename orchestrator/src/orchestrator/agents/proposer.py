@@ -33,8 +33,11 @@ class ProposerAgent(BaseAgent[TradeProposal]):
             "    - volatility_pct 2-4% → 10x\n"
             "    - volatility_pct > 4% → 5x\n"
             "    - if confidence < 0.5 → cap at 5x\n"
-            "- take_profit: list of price levels with close_pct (% of remaining position to close).\n"
-            '  Last level should have close_pct=100. Example: [{"price": 65800, "close_pct": 50}, {"price": 67000, "close_pct": 100}]\n\n'
+            "- take_profit: list of price levels with close_pct\n"
+            "  (% of remaining position to close).\n"
+            "  Last level should have close_pct=100.\n"
+            '  Example: [{"price": 65800, "close_pct": 50}, '
+            '{"price": 67000, "close_pct": 100}]\n\n'
             "Respond with ONLY a JSON object matching this schema:\n"
             "{\n"
             '  "symbol": "<symbol>",\n'

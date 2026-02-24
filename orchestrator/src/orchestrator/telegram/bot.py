@@ -227,7 +227,11 @@ class SentinelBot:
             if is_pending:
                 approval = self._approval_manager.get(result.approval_id)
                 if approval:
-                    await self.push_pending_approval(chat_id, approval)
+                    await self.push_pending_approval(
+                        chat_id, approval,
+                        sentiment=result.sentiment,
+                        market=result.market,
+                    )
                     continue
             await self.push_proposal(chat_id, result)
 
@@ -600,11 +604,18 @@ class SentinelBot:
 
     # --- Approval flow ---
 
-    async def push_pending_approval(self, chat_id: int, approval: PendingApproval) -> int | None:
+    async def push_pending_approval(
+        self,
+        chat_id: int,
+        approval: PendingApproval,
+        *,
+        sentiment: Any | None = None,
+        market: Any | None = None,
+    ) -> int | None:
         """Push proposal with Approve/Reject + Translate keyboard. Returns message_id."""
         if self._app is None:
             return None
-        text = format_pending_approval(approval)
+        text = format_pending_approval(approval, sentiment=sentiment, market=market)
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
@@ -631,6 +642,8 @@ class SentinelBot:
         "reject":           (2, "_handle_reject"),
         "translate":        (2, "_handle_translate"),
         "leverage":         (3, "_handle_leverage_preview"),
+        "margin":           (4, "_handle_margin_preview"),
+        "confirm_margin":   (4, "_handle_confirm_margin"),
         "confirm_leverage": (3, "_handle_confirm_leverage"),
         "close":            (2, "_handle_close"),
         "confirm_close":    (2, "_handle_confirm_close"),
@@ -738,10 +751,12 @@ class SentinelBot:
             await query.edit_message_text("Approval expired or already handled.")
             return
 
-        # Show leverage selection buttons (→ preview step, not direct execution)
+        # Show leverage selection buttons with suggested leverage highlighted
+        p = approval.proposal
         leverage_buttons = [
             InlineKeyboardButton(
-                f"{lev}x", callback_data=f"leverage:{approval_id}:{lev}"
+                f"{'✓ ' if lev == p.suggested_leverage else ''}{lev}x",
+                callback_data=f"leverage:{approval_id}:{lev}",
             )
             for lev in self._leverage_options
         ]
@@ -750,11 +765,10 @@ class SentinelBot:
             [InlineKeyboardButton("Cancel", callback_data="cancel:0")],
         ])
 
-        p = approval.proposal
         text = (
             f"━━ SELECT LEVERAGE ━━\n"
             f"{p.symbol}  {p.side.value.upper()}\n\n"
-            f"Risk: {p.position_size_risk_pct}%\n"
+            f"Suggested: {p.suggested_leverage}x\n"
             f"SL: ${p.stop_loss:,.1f}\n"
             f"Choose leverage:"
         )
@@ -763,8 +777,44 @@ class SentinelBot:
     async def _handle_leverage_preview(
         self, query: CallbackQuery, approval_id: str, leverage_str: str, *_args: str,
     ) -> None:
-        """Show confirmation card with margin/liq details before executing."""
+        """Show margin amount selection after leverage is chosen."""
         leverage = int(leverage_str)
+        if self._approval_manager is None or self._executor is None:
+            await query.answer("Not configured")
+            return
+
+        approval = self._approval_manager.get(approval_id)
+        if approval is None:
+            await query.answer("Expired or not found")
+            await query.edit_message_text("Approval expired or already handled.")
+            return
+
+        p = approval.proposal
+        margin_buttons = [
+            InlineKeyboardButton(
+                f"${m}", callback_data=f"margin:{approval_id}:{leverage}:{m}"
+            )
+            for m in [100, 250, 500, 1000]
+        ]
+        keyboard = InlineKeyboardMarkup([
+            margin_buttons,
+            [InlineKeyboardButton("Cancel", callback_data="cancel:0")],
+        ])
+
+        text = (
+            f"━━ SELECT MARGIN ━━\n"
+            f"{p.symbol}  {p.side.value.upper()} · {leverage}x\n\n"
+            f"Select margin amount (USDT):"
+        )
+        await _safe_callback_reply(query, text=text, reply_markup=keyboard)
+
+    async def _handle_margin_preview(
+        self, query: CallbackQuery, approval_id: str,
+        leverage_str: str, margin_str: str, *_args: str,
+    ) -> None:
+        """Show confirmation card with computed quantity, liq, and ROE details."""
+        leverage = int(leverage_str)
+        margin_usdt = float(margin_str)
         if self._approval_manager is None or self._executor is None:
             await query.answer("Not configured")
             return
@@ -783,37 +833,50 @@ class SentinelBot:
         if self._data_fetcher is not None:
             current_price = await self._data_fetcher.fetch_current_price(p.symbol)
 
-        qty = self._paper_engine._position_sizer.calculate(
-            equity=self._paper_engine.equity,
-            risk_pct=p.position_size_risk_pct,
-            entry_price=current_price,
-            stop_loss=p.stop_loss,
+        from orchestrator.risk.position_sizer import MarginSizer
+
+        sizer = MarginSizer()
+        qty = sizer.calculate_from_margin(
+            margin_usdt=margin_usdt, leverage=leverage, entry_price=current_price,
         )
-        margin = self._paper_engine.calculate_margin(
-            quantity=qty, price=current_price, leverage=leverage,
-        )
+        notional = qty * current_price
         liq = self._paper_engine.calculate_liquidation_price(
             entry_price=current_price, leverage=leverage, side=p.side,
         )
 
         side_str = p.side.value.upper()
-        tp_str = (
-            ", ".join(f"${tp.price:,.1f}" for tp in p.take_profit)
-            if p.take_profit
-            else "—"
-        )
-        text = (
-            f"━━ CONFIRM ORDER ━━\n"
-            f"{p.symbol}  {side_str} · {leverage}x\n\n"
-            f"Now: ${current_price:,.1f} | Qty: {qty:.4f}\n"
-            f"Margin: ${margin:,.2f} | Liq: ~${liq:,.1f}\n"
-            f"SL: ${p.stop_loss:,.1f} | TP: {tp_str}\n"
-        )
+        lines = [
+            "━━ CONFIRM ORDER ━━",
+            f"{p.symbol}  {side_str} @ ${current_price:,.1f}",
+            "",
+            f"Margin:     {margin_usdt:,.0f} USDT",
+            f"Leverage:   {leverage}x",
+            f"Quantity:   {qty:.4f}",
+            f"Notional:   ${notional:,.0f}",
+            "\u2500" * 22,
+            f"\u26d4 Liq:     ${liq:,.1f}",
+        ]
+
+        # SL ROE
+        if p.stop_loss is not None:
+            direction = 1 if p.side.value == "long" else -1
+            sl_pnl = (p.stop_loss - current_price) * qty * direction
+            sl_roe = (sl_pnl / margin_usdt * 100) if margin_usdt > 0 else 0
+            lines.append(f"\u26d4 SL ROE:  {sl_roe:+.1f}%")
+
+        # TP ROE for each level
+        for i, tp in enumerate(p.take_profit, 1):
+            direction = 1 if p.side.value == "long" else -1
+            tp_pnl = (tp.price - current_price) * qty * direction
+            tp_roe = (tp_pnl / margin_usdt * 100) if margin_usdt > 0 else 0
+            lines.append(f"\u2705 TP{i} ROE: {tp_roe:+.1f}% \u2192 close {tp.close_pct}%")
+
+        text = "\n".join(lines)
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
                     "Confirm",
-                    callback_data=f"confirm_leverage:{approval_id}:{leverage}",
+                    callback_data=f"confirm_margin:{approval_id}:{leverage}:{int(margin_usdt)}",
                 ),
                 InlineKeyboardButton("Cancel", callback_data="cancel:0"),
             ],
@@ -891,6 +954,88 @@ class SentinelBot:
                 symbol=approval.proposal.symbol,
                 trade_id=result.trade_id,
                 leverage=leverage,
+                sl_tp_ids=sl_tp_ids,
+            )
+        except Exception as e:
+            logger.error("approval_execution_failed", symbol=approval.proposal.symbol, error=str(e))
+            await query.answer("Execution failed")
+            await query.edit_message_text(f"Execution failed: {e}")
+
+    async def _handle_confirm_margin(
+        self, query: CallbackQuery, approval_id: str,
+        leverage_str: str, margin_str: str, *_args: str,
+    ) -> None:
+        """Execute trade with selected leverage and USDT margin amount."""
+        leverage = int(leverage_str)
+        margin_usdt = float(margin_str)
+        if self._approval_manager is None or self._executor is None:
+            await query.answer("Not configured")
+            return
+
+        approval = self._approval_manager.get(approval_id)
+        if approval is None:
+            await query.answer("Expired or not found")
+            await query.edit_message_text("Approval expired or already handled.")
+            return
+
+        try:
+            current_price = approval.snapshot_price
+            if self._data_fetcher is not None:
+                current_price = await self._data_fetcher.fetch_current_price(
+                    approval.proposal.symbol
+                )
+
+            tp_prices = [tp.price for tp in approval.proposal.take_profit]
+            stale_reason = _check_stale_sl_tp(
+                side=approval.proposal.side.value,
+                current_price=current_price,
+                stop_loss=approval.proposal.stop_loss,
+                take_profit=tp_prices,
+            )
+            if stale_reason:
+                self._approval_manager.reject(approval_id)
+                text = (
+                    f"━━ STALE PROPOSAL ━━\n"
+                    f"{approval.proposal.symbol}  {approval.proposal.side.value.upper()}\n\n"
+                    f"{stale_reason}\n"
+                    f"Use /run to get a fresh analysis."
+                )
+                await _safe_callback_reply(query, text=text, reply_markup=_translate_keyboard())
+                if query.message:
+                    self._msg_cache.store(query.message.message_id, text)
+                return
+
+            self._approval_manager.approve(approval_id)
+
+            result = await self._executor.execute_entry(
+                approval.proposal, current_price=current_price,
+                leverage=leverage, margin_usdt=margin_usdt,
+            )
+            sl_tp_ids = await self._executor.place_sl_tp(
+                symbol=approval.proposal.symbol,
+                side=approval.proposal.side.value,
+                quantity=result.quantity,
+                stop_loss=approval.proposal.stop_loss or 0.0,
+                take_profit=tp_prices,
+            )
+
+            text = format_execution_result(result)
+            await _safe_callback_reply(query, text=text, reply_markup=_translate_keyboard())
+            if query.message:
+                self._msg_cache.store(query.message.message_id, text)
+
+            symbol = approval.proposal.symbol
+            if symbol in self._latest_results:
+                self._latest_results[symbol] = self._latest_results[symbol].model_copy(
+                    update={"status": "executed"}
+                )
+            logger.info(
+                "approval_executed",
+                approval_id=approval_id,
+                symbol=approval.proposal.symbol,
+                trade_id=result.trade_id,
+                leverage=leverage,
+                margin_usdt=margin_usdt,
                 sl_tp_ids=sl_tp_ids,
             )
         except Exception as e:
