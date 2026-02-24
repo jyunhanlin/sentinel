@@ -24,6 +24,28 @@ def make_snapshot() -> MarketSnapshot:
 
 class TestMarketAgent:
     @pytest.mark.asyncio
+    async def test_prompt_includes_volatility_pct(self):
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.call.return_value = LLMCallResult(
+            content=(
+                '{"trend": "up", "volatility_regime": "medium", "volatility_pct": 2.3, '
+                '"key_levels": [], "risk_flags": []}'
+            ),
+            model="test",
+            input_tokens=200,
+            output_tokens=100,
+            latency_ms=1000,
+        )
+
+        agent = MarketAgent(client=mock_client)
+        await agent.analyze(snapshot=make_snapshot())
+
+        call_args = mock_client.call.call_args
+        messages = call_args[0][0] if call_args[0] else call_args[1]["messages"]
+        system_prompt = messages[0]["content"]
+        assert "volatility_pct" in system_prompt
+
+    @pytest.mark.asyncio
     async def test_successful_analysis(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(

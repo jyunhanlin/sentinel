@@ -16,10 +16,13 @@ class MarketAgent(BaseAgent[MarketInterpretation]):
             "You are a crypto technical analyst. "
             "Analyze the provided OHLCV data, funding rate, and volume to determine "
             "market structure, trend, volatility regime, key price levels, and risk flags.\n\n"
+            "Calculate volatility_pct as the average true range of the last 14 candles "
+            "divided by current price, expressed as a percentage (e.g. 2.3 means 2.3%).\n\n"
             "Respond with ONLY a JSON object matching this schema:\n"
             "{\n"
             '  "trend": "up" | "down" | "range",\n'
             '  "volatility_regime": "low" | "medium" | "high",\n'
+            '  "volatility_pct": <float>,\n'
             '  "key_levels": [{"type": "support|resistance", "price": <number>}],\n'
             '  "risk_flags": ["<flag_name>"]  '
             "// e.g. funding_elevated, oi_near_ath, volume_declining\n"

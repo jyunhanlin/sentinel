@@ -40,12 +40,72 @@ def make_market() -> MarketInterpretation:
     return MarketInterpretation(
         trend=Trend.UP,
         volatility_regime=VolatilityRegime.MEDIUM,
+        volatility_pct=2.5,
         key_levels=[KeyLevel(type="support", price=93000.0)],
         risk_flags=[],
     )
 
 
 class TestProposerAgent:
+    @pytest.mark.asyncio
+    async def test_prompt_includes_leverage_and_close_pct(self):
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.call.return_value = LLMCallResult(
+            content=(
+                '{"symbol": "BTC/USDT:USDT", "side": "flat", '
+                '"entry": {"type": "market"}, "position_size_risk_pct": 0, '
+                '"stop_loss": null, "take_profit": [], '
+                '"time_horizon": "4h", "confidence": 0.5, '
+                '"invalid_if": [], "rationale": "No signal"}'
+            ),
+            model="test",
+            input_tokens=300,
+            output_tokens=150,
+            latency_ms=1000,
+        )
+
+        agent = ProposerAgent(client=mock_client)
+        await agent.analyze(
+            snapshot=make_snapshot(),
+            sentiment=make_sentiment(),
+            market=make_market(),
+        )
+
+        call_args = mock_client.call.call_args
+        messages = call_args[0][0] if call_args[0] else call_args[1]["messages"]
+        system_prompt = messages[0]["content"]
+        assert "suggested_leverage" in system_prompt
+        assert "close_pct" in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_prompt_includes_volatility_pct(self):
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.call.return_value = LLMCallResult(
+            content=(
+                '{"symbol": "BTC/USDT:USDT", "side": "flat", '
+                '"entry": {"type": "market"}, "position_size_risk_pct": 0, '
+                '"stop_loss": null, "take_profit": [], '
+                '"time_horizon": "4h", "confidence": 0.5, '
+                '"invalid_if": [], "rationale": "No signal"}'
+            ),
+            model="test",
+            input_tokens=300,
+            output_tokens=150,
+            latency_ms=1000,
+        )
+
+        agent = ProposerAgent(client=mock_client)
+        await agent.analyze(
+            snapshot=make_snapshot(),
+            sentiment=make_sentiment(),
+            market=make_market(),
+        )
+
+        call_args = mock_client.call.call_args
+        messages = call_args[0][0] if call_args[0] else call_args[1]["messages"]
+        user_prompt = messages[-1]["content"]
+        assert "2.5%" in user_prompt
+
     @pytest.mark.asyncio
     async def test_successful_proposal(self):
         mock_client = AsyncMock(spec=LLMClient)
