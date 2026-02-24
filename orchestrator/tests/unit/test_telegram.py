@@ -78,6 +78,9 @@ class TestFormatProposal:
         assert "93000" in msg or "93,000" in msg
         assert "97000" in msg or "97,000" in msg
         assert "Bullish" in msg
+        assert "Stop Loss" in msg
+        assert "Take Profit" in msg
+        assert "Confidence" in msg
 
     def test_format_flat_proposal(self):
         result = PipelineResult(
@@ -351,9 +354,13 @@ class TestFormatPendingApproval:
         assert "BTC/USDT:USDT" in text
         assert "LONG" in text
         assert "93,000" in text or "93000" in text
-        assert "10x" in text
-        assert "100%" in text
-        assert "15" in text  # timeout mention
+        assert "Stop Loss" in text
+        assert "Take Profit" in text
+        assert "Leverage: 10x" in text
+        assert "Confidence: 75%" in text
+        assert "Risk: 1.5%" in text
+        assert "Time Horizon: 4h" in text
+        assert "Expires in 15 min" in text
 
 
 class TestFormatExecutionResult:

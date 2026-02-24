@@ -30,7 +30,7 @@ class TestFormatPriceBoard:
         assert "ETH 2.5K(-0.5%)" in first_line
 
         # Detailed section
-        assert "━━ Price Board ━━" in result
+        assert "Price Board" in result
         assert "BTC/USDT" in result
         assert "$69,123.5" in result
         assert "+1.20%" in result
@@ -41,7 +41,7 @@ class TestFormatPriceBoard:
 
     def test_formats_empty_list(self):
         result = format_price_board([])
-        assert "━━ Price Board ━━" in result
+        assert "Price Board" in result
         assert "No symbols" in result
 
     def test_positive_change_has_plus_sign(self):

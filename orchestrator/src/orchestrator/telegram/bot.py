@@ -766,10 +766,10 @@ class SentinelBot:
         ])
 
         text = (
-            f"━━ SELECT LEVERAGE ━━\n"
+            f"SELECT LEVERAGE\n"
             f"{p.symbol}  {p.side.value.upper()}\n\n"
             f"Suggested: {p.suggested_leverage}x\n"
-            f"SL: ${p.stop_loss:,.1f}\n"
+            f"Stop Loss: ${p.stop_loss:,.1f}\n"
             f"Choose leverage:"
         )
         await _safe_callback_reply(query, text=text, reply_markup=keyboard)
@@ -802,7 +802,7 @@ class SentinelBot:
         ])
 
         text = (
-            f"━━ SELECT MARGIN ━━\n"
+            f"SELECT MARGIN\n"
             f"{p.symbol}  {p.side.value.upper()} · {leverage}x\n\n"
             f"Select margin amount (USDT):"
         )
@@ -846,14 +846,14 @@ class SentinelBot:
 
         side_str = p.side.value.upper()
         lines = [
-            "━━ CONFIRM ORDER ━━",
+            "CONFIRM ORDER",
             f"{p.symbol}  {side_str} @ ${current_price:,.1f}",
             "",
             f"Margin:     {margin_usdt:,.0f} USDT",
             f"Leverage:   {leverage}x",
             f"Quantity:   {qty:.4f}",
             f"Notional:   ${notional:,.0f}",
-            "\u2500" * 22,
+            "",
             f"\u26d4 Liq:     ${liq:,.1f}",
         ]
 
@@ -915,7 +915,7 @@ class SentinelBot:
             if stale_reason:
                 self._approval_manager.reject(approval_id)
                 text = (
-                    f"━━ STALE PROPOSAL ━━\n"
+                    f"STALE PROPOSAL\n"
                     f"{approval.proposal.symbol}  {approval.proposal.side.value.upper()}\n\n"
                     f"{stale_reason}\n"
                     f"Use /run to get a fresh analysis."
@@ -995,7 +995,7 @@ class SentinelBot:
             if stale_reason:
                 self._approval_manager.reject(approval_id)
                 text = (
-                    f"━━ STALE PROPOSAL ━━\n"
+                    f"STALE PROPOSAL\n"
                     f"{approval.proposal.symbol}  {approval.proposal.side.value.upper()}\n\n"
                     f"{stale_reason}\n"
                     f"Use /run to get a fresh analysis."
@@ -1056,7 +1056,7 @@ class SentinelBot:
 
         await query.answer("Rejected")
         text = (
-            f"━━ REJECTED ━━\n"
+            f"REJECTED\n"
             f"{approval.proposal.symbol}  {approval.proposal.side.value.upper()}\n\n"
             "Trade proposal rejected by admin."
         )
@@ -1111,7 +1111,7 @@ class SentinelBot:
         from orchestrator.telegram.formatters import format_position_card
 
         text = (
-            f"━━ CLOSE POSITION? ━━\n"
+            f"CLOSE POSITION?\n"
             f"Now: ${current_price:,.1f}\n\n"
             f"{format_position_card(info)}"
         )
@@ -1160,7 +1160,7 @@ class SentinelBot:
         from orchestrator.telegram.formatters import format_position_card
 
         card = format_position_card(info)
-        text = f"━━ REDUCE POSITION ━━\n\n{card}\n\nSelect percentage to close:"
+        text = f"REDUCE POSITION\n\n{card}\n\nSelect percentage to close:"
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("25%", callback_data=f"select_reduce:{trade_id}:25"),
@@ -1200,7 +1200,7 @@ class SentinelBot:
             else str(pos.side).upper()
         )
         text = (
-            f"━━ CONFIRM REDUCE ━━\n"
+            f"CONFIRM REDUCE\n"
             f"{pos.symbol}  {side_str} {pos.leverage}x\n\n"
             f"Now: ${current_price:,.1f}\n"
             f"Close {pct:.0f}%: {close_qty:.4f}\n"
@@ -1256,7 +1256,7 @@ class SentinelBot:
 
         from orchestrator.telegram.formatters import format_position_card
 
-        text = f"━━ ADD TO POSITION ━━\n\n{format_position_card(info)}\n\nSelect risk % to add:"
+        text = f"ADD TO POSITION\n\n{format_position_card(info)}\n\nSelect risk % to add:"
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("0.5%", callback_data=f"select_add:{trade_id}:0.5"),
@@ -1299,7 +1299,7 @@ class SentinelBot:
             else str(pos.side).upper()
         )
         text = (
-            f"━━ CONFIRM ADD ━━\n"
+            f"CONFIRM ADD\n"
             f"{pos.symbol}  {side_str} {pos.leverage}x\n\n"
             f"Now: ${current_price:,.1f}\n"
             f"Add Qty: {add_qty:.4f} | Add Margin: ${add_margin:,.2f}\n"
@@ -1331,7 +1331,7 @@ class SentinelBot:
                 trade_id=trade_id, risk_pct=risk_pct, current_price=current_price,
             )
             text = (
-                f"━━ POSITION UPDATED ━━\n"
+                f"POSITION UPDATED\n"
                 f"{updated.symbol}  {updated.side.value.upper()} {updated.leverage}x\n\n"
                 f"New Avg Entry: ${updated.entry_price:,.1f}\n"
                 f"New Qty: {updated.quantity:.4f}\n"

@@ -63,7 +63,7 @@ def format_welcome() -> str:
 
 def format_help() -> str:
     return (
-        "━━ Commands ━━\n\n"
+        "Commands\n\n"
         "/status — Account overview & positions\n"
         "/coin <symbol> — Detailed analysis\n"
         "/run [symbol] [model] — Trigger pipeline\n"
@@ -92,7 +92,8 @@ def _format_tp_lines(
             pct = (price - entry_price) / entry_price * 100
             pct_str = f" ({pct:+.1f}%)"
         lines.append(
-            f"\u2705 TP{i}: ${price:,.1f}{pct_str} \u2192 {close_pct}%"
+            f"\u2705 Take Profit {i}: ${price:,.1f}{pct_str}"
+            f" \u2192 close {close_pct}%"
         )
     return lines
 
@@ -112,7 +113,7 @@ def format_proposal(result: PipelineResult) -> str:
     if is_flat:
         lines = [
             f"{emoji} FLAT {p.symbol}",
-            f"Conf {p.confidence:.0%} | {p.time_horizon}",
+            f"Confidence: {p.confidence:.0%} | {p.time_horizon}",
             f"\n{p.rationale}",
         ]
     elif result.status == "rejected":
@@ -135,11 +136,11 @@ def format_proposal(result: PipelineResult) -> str:
             if entry_price and entry_price > 0:
                 pct = (p.stop_loss - entry_price) / entry_price * 100
                 sl_pct = f" ({pct:+.1f}%)"
-            lines.append(f"\u26d4 SL: ${p.stop_loss:,.1f}{sl_pct}")
+            lines.append(f"\u26d4 Stop Loss: ${p.stop_loss:,.1f}{sl_pct}")
         lines.extend(_format_tp_lines(p.take_profit, entry_price))
         lines.append(
             f"\n{p.suggested_leverage}x"
-            f" \u00b7 Conf {p.confidence:.0%}"
+            f" \u00b7 Confidence: {p.confidence:.0%}"
             f" \u00b7 {p.time_horizon}"
         )
         lines.append(f"\n{p.rationale}")
@@ -168,9 +169,11 @@ def format_pending_approval(
     p = approval.proposal
     entry_price = approval.snapshot_price
     emoji = _SIDE_EMOJI.get(p.side.value, "")
+    time_str = _fmt_time(approval.created_at)
 
     lines = [
         f"{emoji} {p.side.value.upper()} {p.symbol}",
+        time_str,
         "",
         f"\u25b6 Entry:  ${entry_price:,.1f} ({p.entry.type})",
     ]
@@ -178,29 +181,31 @@ def format_pending_approval(
     if p.stop_loss is not None:
         sl_pct = (p.stop_loss - entry_price) / entry_price * 100
         lines.append(
-            f"\u26d4 SL:     ${p.stop_loss:,.1f} ({sl_pct:+.1f}%)"
+            f"\u26d4 Stop Loss: ${p.stop_loss:,.1f} ({sl_pct:+.1f}%)"
         )
 
     for i, tp in enumerate(p.take_profit, 1):
         tp_pct = (tp.price - entry_price) / entry_price * 100
         lines.append(
-            f"\u2705 TP{i}: ${tp.price:,.1f}"
-            f" ({tp_pct:+.1f}%) \u2192 {tp.close_pct}%"
+            f"\u2705 Take Profit {i}: ${tp.price:,.1f}"
+            f" ({tp_pct:+.1f}%) \u2192 close {tp.close_pct}%"
         )
 
-    # Summary line: leverage · R:R · confidence
-    parts = [f"{p.suggested_leverage}x"]
+    # Trade parameters
+    lines.append("")
+    lines.append(f"Leverage: {p.suggested_leverage}x")
     if market and hasattr(market, "volatility_pct"):
-        parts[0] += f" (vol {market.volatility_pct:.1f}%)"
+        lines.append(f"Volatility: {market.volatility_pct:.1f}%")
     if p.stop_loss is not None and p.take_profit:
         risk_dist = abs(entry_price - p.stop_loss)
         reward_dist = abs(p.take_profit[-1].price - entry_price)
         rr = reward_dist / risk_dist if risk_dist > 0 else 0
-        parts.append(f"R:R 1:{rr:.1f}")
-    parts.append(f"Conf {p.confidence:.0%}")
-    lines.append(f"\n{' \u00b7 '.join(parts)}")
+        lines.append(f"Risk/Reward: 1:{rr:.1f}")
+    lines.append(f"Confidence: {p.confidence:.0%}")
+    lines.append(f"Risk: {p.position_size_risk_pct}%")
+    lines.append(f"Time Horizon: {p.time_horizon}")
 
-    # Market section (compact)
+    # Market section
     if market:
         trend_str = (
             market.trend.value.upper()
@@ -212,7 +217,7 @@ def format_pending_approval(
             if hasattr(market.volatility_regime, "value")
             else str(market.volatility_regime).upper()
         )
-        lines.append(f"\n\U0001f4ca {trend_str} | {vol_regime}")
+        lines.append(f"\n\U0001f4ca Trend: {trend_str} | Volatility: {vol_regime}")
 
         supports = [
             kl for kl in market.key_levels if kl.type == "support"
@@ -220,31 +225,31 @@ def format_pending_approval(
         resists = [
             kl for kl in market.key_levels if kl.type == "resistance"
         ]
-        level_parts: list[str] = []
         if supports:
             s_str = " / ".join(f"{kl.price:,.0f}" for kl in supports)
-            level_parts.append(f"S: {s_str}")
+            lines.append(f"Support: {s_str}")
         if resists:
             r_str = " / ".join(f"{kl.price:,.0f}" for kl in resists)
-            level_parts.append(f"R: {r_str}")
-        if level_parts:
-            lines.append(" | ".join(level_parts))
+            lines.append(f"Resistance: {r_str}")
 
         if market.risk_flags:
-            flags = ", ".join(market.risk_flags)
-            lines.append(f"\u26a0\ufe0f {flags}")
+            lines.append("")
+            lines.append("\u26a0\ufe0f Warnings:")
+            for flag in market.risk_flags:
+                label = flag.replace("_", " ").title()
+                lines.append(f"\u2022 {label}")
 
-    # Sentiment section (compact)
+    # Sentiment section
     if sentiment:
         score = sentiment.sentiment_score
         label = (
-            "bullish" if score > 60
-            else "bearish" if score < 40
-            else "neutral"
+            "Bullish" if score > 60
+            else "Bearish" if score < 40
+            else "Neutral"
         )
-        line = f"\n\U0001f5e3 {score}/100 {label}"
+        line = f"\n\U0001f5e3 Sentiment: {score}/100 ({label})"
         if sentiment.key_events:
-            line += f" — {sentiment.key_events[0].event}"
+            line += f"\n{sentiment.key_events[0].event}"
         lines.append(line)
 
     lines.append(f"\n{p.rationale}")
@@ -252,11 +257,11 @@ def format_pending_approval(
     # Footer
     footer_parts: list[str] = []
     if approval.model_used:
-        footer_parts.append(approval.model_used.split("/")[-1])
+        footer_parts.append(f"Model: {approval.model_used.split('/')[-1]}")
     remaining = int(
         (approval.expires_at - approval.created_at).total_seconds() / 60
     )
-    footer_parts.append(f"{remaining}m")
+    footer_parts.append(f"Expires in {remaining} min")
     lines.append(f"\n{' \u00b7 '.join(footer_parts)}")
 
     return "\n".join(lines)
@@ -340,7 +345,7 @@ def format_status(results: list[PipelineResult]) -> str:
     if not results:
         return "No pipeline results yet. Use /run to trigger analysis."
 
-    blocks = ["━━ Pipeline Status ━━"]
+    blocks = ["Pipeline Status"]
     for r in results:
         side = r.proposal.side.value.upper() if r.proposal else "N/A"
         time_str = _fmt_time(r.created_at)
@@ -370,9 +375,11 @@ def format_status(results: list[PipelineResult]) -> str:
                 ", ".join(f"${tp.price:,.1f}" for tp in p.take_profit)
                 if p.take_profit else "\u2014"
             )
-            blocks.append(f"  SL: {sl_str} | TP: {tp_str}")
             blocks.append(
-                f"  Conf {p.confidence:.0%} | {p.time_horizon}"
+                f"  Stop Loss: {sl_str} | Take Profit: {tp_str}"
+            )
+            blocks.append(
+                f"  Confidence: {p.confidence:.0%} | {p.time_horizon}"
             )
 
         if r.model_used:
@@ -398,7 +405,7 @@ def format_status_from_records(
     if not records:
         return "No pipeline results yet. Use /run to trigger analysis."
 
-    blocks = ["━━ Pipeline Status (DB) ━━"]
+    blocks = ["Pipeline Status (DB)"]
     for r in records:
         try:
             p = json.loads(r.proposal_json)
@@ -442,9 +449,11 @@ def format_status_from_records(
                 tp_str = (
                     ", ".join(tp_parts) if tp_parts else "\u2014"
                 )
-                blocks.append(f"  SL: {sl_str} | TP: {tp_str}")
+                blocks.append(
+                    f"  Stop Loss: {sl_str} | Take Profit: {tp_str}"
+                )
                 horizon = p.get("time_horizon", "?")
-                blocks.append(f"  Conf {conf_str} | {horizon}")
+                blocks.append(f"  Confidence: {conf_str} | {horizon}")
 
         except (json.JSONDecodeError, AttributeError):
             blocks.append(
@@ -474,7 +483,7 @@ def format_perf_report(stats: PerformanceStats) -> str:
     )
 
     lines = [
-        "━━ Performance ━━",
+        "Performance",
         "",
         f"PnL:         {pnl_str}"
         f" ({pnl_pct_sign}{stats.total_pnl_pct:.1f}%)",
@@ -493,7 +502,7 @@ def format_perf_report(stats: PerformanceStats) -> str:
 
 def format_eval_report(report: dict[str, Any]) -> str:
     lines = [
-        f"━━ Eval: {report['dataset_name']} ━━",
+        f"Eval: {report['dataset_name']}",
         "",
         f"Cases: {report['total_cases']}"
         f" | Pass: {report['passed_cases']}"
@@ -540,13 +549,13 @@ def format_position_card(info: dict) -> str:
             f"Margin: ${pos.margin:,.2f}"
             f" | Liq: ${pos.liquidation_price:,.1f}"
         )
-    lines.append(f"SL: ${pos.stop_loss:,.1f}")
+    lines.append(f"Stop Loss: ${pos.stop_loss:,.1f}")
     if pos.take_profit:
         tp_str = ", ".join(
             f"${tp.price:,.1f} ({tp.close_pct}%)"
             for tp in pos.take_profit
         )
-        lines.append(f"TP: {tp_str}")
+        lines.append(f"Take Profit: {tp_str}")
 
     lines.append(
         f"PnL: {pnl_sign}${pnl:,.2f} ({pnl_sign}{pnl_pct:.2f}%)"
@@ -574,7 +583,7 @@ def format_account_overview(
     pnl_sign = "+" if total_pnl >= 0 else ""
 
     lines = [
-        "━━ Account Overview ━━",
+        "Account Overview",
         "",
         f"Equity:      ${equity:,.2f}"
         f" ({pnl_sign}${total_pnl:,.2f})",
@@ -601,7 +610,7 @@ def format_history_paginated(
     if not trades:
         return "No closed trades yet."
 
-    lines = [f"━━ History — {page}/{total_pages} ━━"]
+    lines = [f"History — {page}/{total_pages}"]
     for t in trades:
         side_str = (
             t.side.upper()
@@ -651,7 +660,7 @@ def format_price_board(summaries: list) -> str:
     from datetime import UTC, datetime
 
     if not summaries:
-        return "━━ Price Board ━━\nNo symbols configured."
+        return "Price Board\nNo symbols configured."
 
     # Line 1: compact summary for pinned preview
     compact_parts: list[str] = []
@@ -666,7 +675,7 @@ def format_price_board(summaries: list) -> str:
     summary_line = " ".join(compact_parts)
 
     # Detailed lines
-    lines = [summary_line, "", "━━ Price Board ━━"]
+    lines = [summary_line, "", "Price Board"]
     for s in summaries:
         display_symbol = s.symbol.replace(":USDT", "")
         sign = "+" if s.change_24h_pct >= 0 else ""
@@ -685,7 +694,7 @@ def format_history(trades: list[PaperTradeRecord]) -> str:
     if not trades:
         return "No closed trades yet."
 
-    lines = ["━━ Recent Trades ━━"]
+    lines = ["Recent Trades"]
     for t in trades:
         lines.append(
             f"\n  {t.symbol} {t.side.upper()}"

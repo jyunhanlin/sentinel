@@ -16,10 +16,10 @@ _SYSTEM_PROMPT = (
     "Translate the following message from English to Traditional Chinese (繁體中文).\n\n"
     "Rules:\n"
     "- Preserve all numbers, prices, percentages, and timestamps exactly\n"
-    "- Keep trading abbreviations as-is: SL, TP, PnL, LONG, SHORT, FLAT\n"
+    "- Keep trading terms as-is: Stop Loss, Take Profit, PnL, LONG, SHORT, FLAT\n"
     "- Keep symbol names as-is (e.g. BTC/USDT:USDT)\n"
     "- Keep model names as-is (e.g. claude-sonnet-4-6)\n"
-    "- Preserve all formatting: line breaks, indentation, separators (─), brackets\n"
+    "- Preserve all formatting: line breaks, indentation, brackets\n"
     "- Keep /command names as-is (e.g. /run, /status, /help)\n"
     "- Output ONLY the translated text, no explanations"
 )
