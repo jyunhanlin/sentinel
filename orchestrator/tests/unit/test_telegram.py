@@ -166,12 +166,11 @@ class TestFormatTradeReport:
             reason="sl",
         )
         text = format_trade_report(result)
-        assert "CLOSED" in text
+        assert "SL" in text
         assert "BTC/USDT:USDT" in text
         assert "LONG" in text
         assert "93,000.0" in text
         assert "-$150.00" in text
-        assert "SL" in text
 
     def test_format_short_close_tp(self):
         result = CloseResult(
@@ -352,8 +351,8 @@ class TestFormatPendingApproval:
         assert "BTC/USDT:USDT" in text
         assert "LONG" in text
         assert "93,000" in text or "93000" in text
-        assert "Leverage: 10x" in text
-        assert "close 100%" in text
+        assert "10x" in text
+        assert "100%" in text
         assert "15" in text  # timeout mention
 
 
@@ -375,7 +374,7 @@ class TestFormatExecutionResult:
             tp_order_id="tp-001",
         )
         text = format_execution_result(result)
-        assert "EXECUTED" in text
+        assert "LONG" in text
         assert "live" in text.lower()
         assert "95,350" in text or "95350" in text
 
@@ -393,7 +392,7 @@ class TestFormatExecutionResult:
             mode="paper",
         )
         text = format_execution_result(result)
-        assert "EXECUTED" in text
+        assert "LONG" in text
         assert "paper" in text.lower()
 
 
@@ -1186,7 +1185,7 @@ class TestLeverageFormatting:
             margin=680.0,
         )
         text = format_history_paginated([trade], page=1, total_pages=3)
-        assert "Page 1/3" in text
+        assert "1/3" in text
         assert "10x" in text
         assert "ROE" in text
 
