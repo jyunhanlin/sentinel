@@ -279,6 +279,9 @@ class SentinelBot:
                 except BadRequest:
                     # Message deleted or not found — fall through to send new
                     pass
+                except Exception:
+                    logger.warning("price_board_edit_failed", chat_id=chat_id)
+                    continue
 
             # Send new message and pin it
             try:
