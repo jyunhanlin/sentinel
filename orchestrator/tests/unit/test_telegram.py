@@ -684,8 +684,8 @@ class TestStatusWithPositions:
         assert calls[1][1]["reply_markup"] is not None
 
     @pytest.mark.asyncio
-    async def test_status_no_positions_shows_basic(self):
-        """When no positions, status should show normal overview."""
+    async def test_status_no_positions_shows_overview(self):
+        """When no positions, status should show account overview with 'No open positions'."""
         mock_engine = MagicMock()
         mock_engine.get_open_positions.return_value = []
         mock_engine.equity = 10000.0
@@ -693,13 +693,41 @@ class TestStatusWithPositions:
         mock_engine.used_margin = 0.0
         mock_engine._initial_equity = 10000.0
 
+        mock_fetcher = MagicMock()
+
         bot = SentinelBot(
             token="t", admin_chat_ids=[123],
-            paper_engine=mock_engine,
+            paper_engine=mock_engine, data_fetcher=mock_fetcher,
         )
         update = _make_update(123)
         await bot._status_handler(update, _make_context())
-        update.message.reply_text.assert_called()
+        text = update.message.reply_text.call_args[0][0]
+        assert "Account Overview" in text
+        assert "No open positions" in text
+
+    @pytest.mark.asyncio
+    async def test_status_no_positions_includes_recent_signals(self):
+        """When no positions but has pipeline results, show overview + signals."""
+        mock_engine = MagicMock()
+        mock_engine.get_open_positions.return_value = []
+        mock_engine.equity = 10000.0
+        mock_engine.available_balance = 10000.0
+        mock_engine.used_margin = 0.0
+        mock_engine._initial_equity = 10000.0
+
+        mock_fetcher = MagicMock()
+
+        bot = SentinelBot(
+            token="t", admin_chat_ids=[123],
+            paper_engine=mock_engine, data_fetcher=mock_fetcher,
+        )
+        bot._latest_results = {"BTC/USDT:USDT": _make_pipeline_result()}
+        update = _make_update(123)
+        await bot._status_handler(update, _make_context())
+        text = update.message.reply_text.call_args[0][0]
+        assert "Account Overview" in text
+        assert "Pipeline Status" in text
+        assert "BTC" in text
 
 
 class TestCoinHandler:
