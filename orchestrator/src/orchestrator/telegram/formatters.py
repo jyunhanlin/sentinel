@@ -591,8 +591,11 @@ def format_account_overview(
         f"Used Margin: ${used_margin:,.2f}",
     ]
 
-    if position_count > 0:
-        lines.append(f"\nOpen Positions: {position_count}")
+    lines.append(
+        f"\nOpen Positions: {position_count}"
+        if position_count > 0
+        else "\nNo open positions"
+    )
 
     return "\n".join(lines)
 

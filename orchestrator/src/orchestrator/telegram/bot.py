@@ -339,13 +339,22 @@ class SentinelBot:
 
         # Show position cards if paper engine is available
         if self._paper_engine is not None and self._data_fetcher is not None:
-            positions = self._paper_engine.get_open_positions()
-            if positions:
-                from orchestrator.telegram.formatters import (
-                    format_account_overview,
-                    format_position_card,
-                )
+            from orchestrator.telegram.formatters import (
+                format_account_overview,
+                format_position_card,
+            )
 
+            positions = self._paper_engine.get_open_positions()
+
+            overview = format_account_overview(
+                equity=self._paper_engine.equity,
+                available=self._paper_engine.available_balance,
+                used_margin=self._paper_engine.used_margin,
+                initial_equity=self._paper_engine._initial_equity,
+                position_count=len(positions),
+            )
+
+            if positions:
                 position_cards: list[str] = []
                 for pos in positions:
                     try:
@@ -359,13 +368,6 @@ class SentinelBot:
                     except Exception as e:
                         logger.warning("position_card_error", trade_id=pos.trade_id, error=str(e))
 
-                overview = format_account_overview(
-                    equity=self._paper_engine.equity,
-                    available=self._paper_engine.available_balance,
-                    used_margin=self._paper_engine.used_margin,
-                    initial_equity=self._paper_engine._initial_equity,
-                    position_count=len(position_cards),
-                )
                 # Send overview header, then each position card with action buttons
                 await self._reply(update, overview)
                 for pos, card in zip(positions, position_cards):
@@ -388,6 +390,20 @@ class SentinelBot:
                         )
                 return
 
+            # No open positions — show account overview + recent signals
+            parts: list[str] = [overview]
+
+            results = list(self._latest_results.values())
+            if results:
+                parts.append(format_status(results))
+            elif self._proposal_repo is not None:
+                records = self._proposal_repo.get_recent(limit=10)
+                parts.append(format_status_from_records(records))
+
+            await self._reply(update, "\n\n".join(parts))
+            return
+
+        # Fallback: no paper engine
         parts: list[str] = []
         if self._running_symbols:
             syms = ", ".join(sorted(self._running_symbols))
