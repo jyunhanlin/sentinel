@@ -394,7 +394,7 @@ class TestPipelineRunnerApproval:
         risk_checker.check.return_value = RiskResult(approved=True)
 
         paper_engine = MagicMock()
-
+        paper_engine.paused = False
         paper_engine.open_positions_risk_pct = 0.0
         paper_engine.equity = 10000.0
         paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
@@ -450,7 +450,7 @@ class TestPipelineRunnerApproval:
         risk_checker.check.return_value = RiskResult(approved=True)
 
         paper_engine = MagicMock()
-
+        paper_engine.paused = False
         paper_engine.open_positions_risk_pct = 0.0
         paper_engine.equity = 10000.0
         paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
@@ -471,6 +471,132 @@ class TestPipelineRunnerApproval:
         result = await runner.execute("BTC/USDT:USDT")
         assert result.status == "completed"
         paper_engine.open_position.assert_called_once()
+
+
+class TestPipelineRunnerPaused:
+    """Tests for paused engine blocking new trades."""
+
+    @pytest.mark.asyncio
+    async def test_paused_engine_blocks_pipeline(self):
+        """When paper engine is paused, pipeline should return early with engine_paused status."""
+        data_fetcher = AsyncMock()
+        sentiment_agent = AsyncMock()
+        market_agent = AsyncMock()
+        proposer_agent = AsyncMock()
+
+        risk_checker = MagicMock()
+        paper_engine = MagicMock()
+        paper_engine.paused = True  # Engine is paused
+
+        runner = PipelineRunner(
+            data_fetcher=data_fetcher,
+            sentiment_agent=sentiment_agent,
+            market_agent=market_agent,
+            proposer_agent=proposer_agent,
+            pipeline_repo=MagicMock(),
+            llm_call_repo=MagicMock(),
+            proposal_repo=MagicMock(),
+            risk_checker=risk_checker,
+            paper_engine=paper_engine,
+        )
+
+        result = await runner.execute("BTC/USDT:USDT")
+
+        assert result.status == "engine_paused"
+        assert "paused" in result.rejection_reason.lower()
+        # Should NOT call any LLM agents — no wasted API calls
+        sentiment_agent.analyze.assert_not_called()
+        market_agent.analyze.assert_not_called()
+        proposer_agent.analyze.assert_not_called()
+        # Should NOT call risk checker or open positions
+        risk_checker.check.assert_not_called()
+        paper_engine.open_position.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unpaused_engine_allows_pipeline(self):
+        """When paper engine is not paused, pipeline should proceed normally."""
+        data_fetcher = AsyncMock()
+        data_fetcher.fetch_snapshot.return_value = MagicMock(
+            symbol="BTC/USDT:USDT",
+            current_price=95000.0,
+        )
+        sentiment_agent = AsyncMock()
+        sentiment_agent.analyze.return_value = MagicMock(
+            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
+        )
+        market_agent = AsyncMock()
+        market_agent.analyze.return_value = MagicMock(
+            output=_make_market(), degraded=False, llm_calls=[], messages=[],
+        )
+        proposer_agent = AsyncMock()
+        proposer_agent.analyze.return_value = MagicMock(
+            output=_make_proposal(side=Side.LONG, risk_pct=1.0),
+            degraded=False, llm_calls=[], messages=[],
+        )
+        risk_checker = MagicMock()
+        risk_checker.check.return_value = RiskResult(approved=True)
+
+        paper_engine = MagicMock()
+        paper_engine.paused = False
+        paper_engine.open_positions_risk_pct = 0.0
+        paper_engine.equity = 10000.0
+        paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
+        paper_engine._trade_repo.count_consecutive_losses.return_value = 0
+
+        runner = PipelineRunner(
+            data_fetcher=data_fetcher,
+            sentiment_agent=sentiment_agent,
+            market_agent=market_agent,
+            proposer_agent=proposer_agent,
+            pipeline_repo=MagicMock(),
+            llm_call_repo=MagicMock(),
+            proposal_repo=MagicMock(),
+            risk_checker=risk_checker,
+            paper_engine=paper_engine,
+        )
+
+        result = await runner.execute("BTC/USDT:USDT")
+
+        assert result.status == "completed"
+        sentiment_agent.analyze.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_paper_engine_skips_pause_check(self):
+        """Without paper engine, pause check is skipped (no risk management)."""
+        data_fetcher = AsyncMock()
+        data_fetcher.fetch_snapshot.return_value = MagicMock(
+            symbol="BTC/USDT:USDT",
+            current_price=95000.0,
+        )
+        sentiment_agent = AsyncMock()
+        sentiment_agent.analyze.return_value = MagicMock(
+            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
+        )
+        market_agent = AsyncMock()
+        market_agent.analyze.return_value = MagicMock(
+            output=_make_market(), degraded=False, llm_calls=[], messages=[],
+        )
+        proposer_agent = AsyncMock()
+        proposer_agent.analyze.return_value = MagicMock(
+            output=_make_proposal(side=Side.FLAT),
+            degraded=False, llm_calls=[], messages=[],
+        )
+
+        runner = PipelineRunner(
+            data_fetcher=data_fetcher,
+            sentiment_agent=sentiment_agent,
+            market_agent=market_agent,
+            proposer_agent=proposer_agent,
+            pipeline_repo=MagicMock(),
+            llm_call_repo=MagicMock(),
+            proposal_repo=MagicMock(),
+            # No risk_checker, no paper_engine
+        )
+
+        result = await runner.execute("BTC/USDT:USDT")
+
+        assert result.status == "completed"
+        sentiment_agent.analyze.assert_called_once()
 
 
 class TestSaveLLMCalls:

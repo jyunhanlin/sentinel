@@ -82,6 +82,21 @@ class PipelineRunner:
         self._pipeline_repo.create_run(run_id=run_id, symbol=symbol)
 
         try:
+            # Step 0: Check if engine is paused
+            if self._paper_engine is not None and self._paper_engine.paused:
+                reason = (
+                    "Engine is paused due to risk limits. "
+                    "Use /resume to resume trading."
+                )
+                self._pipeline_repo.update_run_status(run_id, "engine_paused")
+                logger.warning("pipeline_engine_paused", run_id=run_id)
+                return PipelineResult(
+                    run_id=run_id,
+                    symbol=symbol,
+                    status="engine_paused",
+                    rejection_reason=reason,
+                )
+
             # Step 1: Fetch market data
             snapshot = await self._data_fetcher.fetch_snapshot(symbol, timeframe=timeframe)
             logger.info("snapshot_fetched", price=snapshot.current_price)
