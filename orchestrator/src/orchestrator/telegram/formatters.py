@@ -337,6 +337,25 @@ def format_risk_rejection(
     return "\n".join(lines)
 
 
+def format_risk_pause(
+    *, symbol: str, side: str, entry_price: float,
+    risk_result: RiskResult,
+) -> str:
+    """Format a risk pause notification with clear instructions."""
+    lines = [
+        "\u23f8 TRADING PAUSED",
+        "",
+        f"{symbol} {side} @ ${entry_price:,.1f}",
+        "",
+        f"Rule: {risk_result.rule_violated}",
+        f"Reason: {risk_result.reason}",
+        "",
+        "All new trades are blocked until you resume.",
+        "Tap the button below or use /resume to continue.",
+    ]
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Status / overview
 # ---------------------------------------------------------------------------

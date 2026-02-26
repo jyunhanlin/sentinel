@@ -16,6 +16,7 @@ from orchestrator.telegram.formatters import (
     format_history_paginated,
     format_position_card,
     format_proposal,
+    format_risk_pause,
     format_risk_rejection,
     format_status,
     format_trade_report,
@@ -874,6 +875,156 @@ class TestResumeHandler:
         mock_engine.set_paused.assert_called_once_with(False)
         text = update.message.reply_text.call_args[0][0]
         assert "resumed" in text.lower()
+
+
+class TestFormatRiskPause:
+    def test_format_includes_rule_and_instructions(self):
+        risk_result = RiskResult(
+            approved=False,
+            rule_violated="max_consecutive_losses",
+            reason="5 consecutive losses reached 5 limit",
+            action="pause",
+        )
+        text = format_risk_pause(
+            symbol="BTC/USDT:USDT",
+            side="LONG",
+            entry_price=95000.0,
+            risk_result=risk_result,
+        )
+        assert "PAUSED" in text
+        assert "max_consecutive_losses" in text
+        assert "resume" in text.lower()
+
+    def test_format_daily_loss_pause(self):
+        risk_result = RiskResult(
+            approved=False,
+            rule_violated="max_daily_loss",
+            reason="Daily loss 6.2% exceeds 5.0% limit",
+            action="pause",
+        )
+        text = format_risk_pause(
+            symbol="ETH/USDT:USDT",
+            side="SHORT",
+            entry_price=3200.0,
+            risk_result=risk_result,
+        )
+        assert "max_daily_loss" in text
+        assert "ETH/USDT:USDT" in text
+
+
+class TestResumeCallback:
+    @pytest.mark.asyncio
+    async def test_resume_button_unpauses(self):
+        mock_engine = MagicMock()
+        mock_engine.paused = True
+        bot = SentinelBot(token="t", admin_chat_ids=[123], paper_engine=mock_engine)
+
+        query = MagicMock()
+        query.data = "resume:confirm"
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        await bot._handle_resume(query, "confirm")
+
+        mock_engine.set_paused.assert_called_once_with(False)
+
+    @pytest.mark.asyncio
+    async def test_resume_button_already_active(self):
+        mock_engine = MagicMock()
+        mock_engine.paused = False
+        bot = SentinelBot(token="t", admin_chat_ids=[123], paper_engine=mock_engine)
+
+        query = MagicMock()
+        query.data = "resume:confirm"
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        await bot._handle_resume(query, "confirm")
+
+        mock_engine.set_paused.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_resume_button_no_engine(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+
+        query = MagicMock()
+        query.data = "resume:confirm"
+        query.answer = AsyncMock()
+        query.edit_message_text = AsyncMock()
+
+        await bot._handle_resume(query, "confirm")
+        # Should not crash
+
+
+class TestPushRiskPause:
+    @pytest.mark.asyncio
+    async def test_push_risk_pause_no_app(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        await bot.push_risk_pause(
+            symbol="BTC", side="LONG", entry_price=95000.0,
+            risk_result=MagicMock(),
+        )
+        # Should return silently
+
+    @pytest.mark.asyncio
+    async def test_push_risk_pause_sends_with_resume_button(self):
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        bot._app = MagicMock()
+        bot._app.bot.send_message = AsyncMock()
+
+        risk_result = RiskResult(
+            approved=False,
+            rule_violated="max_daily_loss",
+            reason="Daily loss 6% exceeds 5% limit",
+            action="pause",
+        )
+        await bot.push_risk_pause(
+            symbol="BTC/USDT:USDT", side="LONG",
+            entry_price=95000.0, risk_result=risk_result,
+        )
+
+        bot._app.bot.send_message.assert_called_once()
+        call_kwargs = bot._app.bot.send_message.call_args[1]
+        markup = call_kwargs["reply_markup"]
+        # First row should have the resume button
+        resume_btn = markup.inline_keyboard[0][0]
+        assert "resume" in resume_btn.callback_data
+
+    @pytest.mark.asyncio
+    async def test_push_to_admins_risk_paused_sends_pause_notification(self):
+        """risk_paused result sends pause notification with resume button."""
+        bot = SentinelBot(token="t", admin_chat_ids=[123])
+        bot._app = MagicMock()
+        bot._app.bot.send_message = AsyncMock()
+
+        result = PipelineResult(
+            run_id="r1",
+            symbol="BTC/USDT:USDT",
+            status="risk_paused",
+            proposal=TradeProposal(
+                symbol="BTC/USDT:USDT", side=Side.LONG,
+                entry=EntryOrder(type="market"),
+                position_size_risk_pct=1.0, stop_loss=93000.0,
+                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
+                time_horizon="4h", confidence=0.7,
+                invalid_if=[], rationale="test",
+            ),
+            risk_result=RiskResult(
+                approved=False,
+                rule_violated="max_daily_loss",
+                reason="Daily loss 6% exceeds 5% limit",
+                action="pause",
+            ),
+        )
+
+        await bot.push_to_admins_with_approval(result)
+
+        bot._app.bot.send_message.assert_called_once()
+        call_kwargs = bot._app.bot.send_message.call_args[1]
+        assert "PAUSED" in call_kwargs["text"]
+        markup = call_kwargs["reply_markup"]
+        resume_btn = markup.inline_keyboard[0][0]
+        assert "resume" in resume_btn.callback_data
 
 
 class TestPushMethods:

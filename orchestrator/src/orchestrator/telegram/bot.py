@@ -20,6 +20,7 @@ from orchestrator.telegram.formatters import (
     format_pending_approval,
     format_perf_report,
     format_proposal,
+    format_risk_pause,
     format_risk_rejection,
     format_status,
     format_status_from_records,
@@ -218,6 +219,21 @@ class SentinelBot:
         """Push a pipeline result to all admins, with approval buttons if applicable."""
         if self._app is None:
             return
+
+        # Risk pause: send dedicated notification with resume button
+        if (
+            result.status == "risk_paused"
+            and result.risk_result
+            and result.proposal
+        ):
+            await self.push_risk_pause(
+                symbol=result.symbol,
+                side=result.proposal.side.value.upper(),
+                entry_price=result.proposal.stop_loss or 0.0,
+                risk_result=result.risk_result,
+            )
+            return
+
         for chat_id in self.admin_chat_ids:
             is_pending = (
                 result.status == "pending_approval"
@@ -258,6 +274,25 @@ class SentinelBot:
         for chat_id in self.admin_chat_ids:
             sent = await self._app.bot.send_message(
                 chat_id=chat_id, text=msg, reply_markup=_translate_keyboard(),
+            )
+            self._msg_cache.store(sent.message_id, msg)
+
+    async def push_risk_pause(
+        self, *, symbol: str, side: str, entry_price: float, risk_result: RiskResult
+    ) -> None:
+        """Push a risk pause notification with resume button to all admin chats."""
+        if self._app is None:
+            return
+        msg = format_risk_pause(
+            symbol=symbol, side=side, entry_price=entry_price, risk_result=risk_result
+        )
+        rows = [
+            [InlineKeyboardButton("\u25b6\ufe0f Resume Trading", callback_data="resume:confirm")],
+            [InlineKeyboardButton("Translate to zh-TW", callback_data="translate:zh")],
+        ]
+        for chat_id in self.admin_chat_ids:
+            sent = await self._app.bot.send_message(
+                chat_id=chat_id, text=msg, reply_markup=InlineKeyboardMarkup(rows),
             )
             self._msg_cache.store(sent.message_id, msg)
 
@@ -669,6 +704,7 @@ class SentinelBot:
         "add":              (2, "_handle_add"),
         "select_add":       (3, "_handle_select_add"),
         "confirm_add":      (3, "_handle_confirm_add"),
+        "resume":           (2, "_handle_resume"),
         "cancel":           (1, "_handle_cancel"),
         "history":          (3, "_handle_history_callback"),
     }
@@ -698,6 +734,18 @@ class SentinelBot:
 
     async def _handle_cancel(self, query: CallbackQuery, *_args: str) -> None:
         await _safe_callback_reply(query, text="Cancelled.")
+
+    async def _handle_resume(self, query: CallbackQuery, *_args: str) -> None:
+        if self._paper_engine is None:
+            await _safe_callback_reply(query, text="Paper trading not configured.")
+            return
+        if not self._paper_engine.paused:
+            await _safe_callback_reply(query, text="Trading is already active.")
+            return
+        self._paper_engine.set_paused(False)
+        await _safe_callback_reply(
+            query, text="\u25b6\ufe0f Trading resumed. New proposals will be executed."
+        )
 
     async def _handle_translate(self, query: CallbackQuery, lang: str) -> None:
         """Toggle message between English and Chinese."""
