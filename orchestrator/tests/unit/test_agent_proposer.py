@@ -46,18 +46,22 @@ def make_market() -> MarketInterpretation:
     )
 
 
+FLAT_RESPONSE = (
+    "## Analysis\nNo clear edge.\n\n"
+    '```json\n{"symbol": "BTC/USDT:USDT", "side": "flat", '
+    '"entry": {"type": "market"}, "position_size_risk_pct": 0, '
+    '"stop_loss": null, "take_profit": [], '
+    '"time_horizon": "4h", "confidence": 0.5, '
+    '"invalid_if": [], "rationale": "No signal"}\n```'
+)
+
+
 class TestProposerAgent:
     @pytest.mark.asyncio
-    async def test_prompt_includes_leverage_and_close_pct(self):
+    async def test_prompt_references_skill_and_contains_all_inputs(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(
-            content=(
-                '{"symbol": "BTC/USDT:USDT", "side": "flat", '
-                '"entry": {"type": "market"}, "position_size_risk_pct": 0, '
-                '"stop_loss": null, "take_profit": [], '
-                '"time_horizon": "4h", "confidence": 0.5, '
-                '"invalid_if": [], "rationale": "No signal"}'
-            ),
+            content=FLAT_RESPONSE,
             model="test",
             input_tokens=300,
             output_tokens=150,
@@ -73,49 +77,31 @@ class TestProposerAgent:
 
         call_args = mock_client.call.call_args
         messages = call_args[0][0] if call_args[0] else call_args[1]["messages"]
-        system_prompt = messages[0]["content"]
-        assert "suggested_leverage" in system_prompt
-        assert "close_pct" in system_prompt
 
-    @pytest.mark.asyncio
-    async def test_prompt_includes_volatility_pct(self):
-        mock_client = AsyncMock(spec=LLMClient)
-        mock_client.call.return_value = LLMCallResult(
-            content=(
-                '{"symbol": "BTC/USDT:USDT", "side": "flat", '
-                '"entry": {"type": "market"}, "position_size_risk_pct": 0, '
-                '"stop_loss": null, "take_profit": [], '
-                '"time_horizon": "4h", "confidence": 0.5, '
-                '"invalid_if": [], "rationale": "No signal"}'
-            ),
-            model="test",
-            input_tokens=300,
-            output_tokens=150,
-            latency_ms=1000,
-        )
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
 
-        agent = ProposerAgent(client=mock_client)
-        await agent.analyze(
-            snapshot=make_snapshot(),
-            sentiment=make_sentiment(),
-            market=make_market(),
-        )
-
-        call_args = mock_client.call.call_args
-        messages = call_args[0][0] if call_args[0] else call_args[1]["messages"]
-        user_prompt = messages[-1]["content"]
-        assert "2.5%" in user_prompt
+        prompt = messages[0]["content"]
+        # References skill
+        assert "proposer" in prompt.lower()
+        assert "skill" in prompt.lower()
+        # Contains data from all three inputs
+        assert "95200" in prompt
+        assert "72" in prompt  # sentiment score
+        assert "up" in prompt.lower()  # trend
+        assert "2.5" in prompt  # volatility_pct
 
     @pytest.mark.asyncio
     async def test_successful_proposal(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(
             content=(
-                '{"symbol": "BTC/USDT:USDT", "side": "long", '
+                "## Trade Analysis\nBullish setup.\n\n"
+                '```json\n{"symbol": "BTC/USDT:USDT", "side": "long", '
                 '"entry": {"type": "market"}, "position_size_risk_pct": 1.5, '
                 '"stop_loss": 93000, "take_profit": [{"price": 97000, "close_pct": 100}], '
                 '"time_horizon": "4h", "confidence": 0.75, '
-                '"invalid_if": [], "rationale": "Bullish momentum"}'
+                '"invalid_if": [], "rationale": "Bullish momentum"}\n```'
             ),
             model="test",
             input_tokens=300,
@@ -133,38 +119,6 @@ class TestProposerAgent:
         assert isinstance(result.output, TradeProposal)
         assert result.output.side == Side.LONG
         assert result.degraded is False
-
-    @pytest.mark.asyncio
-    async def test_prompt_contains_all_inputs(self):
-        mock_client = AsyncMock(spec=LLMClient)
-        mock_client.call.return_value = LLMCallResult(
-            content=(
-                '{"symbol": "BTC/USDT:USDT", "side": "flat", '
-                '"entry": {"type": "market"}, "position_size_risk_pct": 0, '
-                '"stop_loss": null, "take_profit": [], '
-                '"time_horizon": "4h", "confidence": 0.5, '
-                '"invalid_if": [], "rationale": "No clear signal"}'  # empty take_profit is fine
-            ),
-            model="test",
-            input_tokens=300,
-            output_tokens=150,
-            latency_ms=1000,
-        )
-
-        agent = ProposerAgent(client=mock_client)
-        await agent.analyze(
-            snapshot=make_snapshot(),
-            sentiment=make_sentiment(),
-            market=make_market(),
-        )
-
-        call_args = mock_client.call.call_args
-        messages = call_args[0][0] if call_args[0] else call_args[1]["messages"]
-        user_msg = messages[-1]["content"]
-        # Should contain data from all three inputs
-        assert "sentiment_score" in user_msg or "72" in user_msg
-        assert "up" in user_msg.lower() or "trend" in user_msg.lower()
-        assert "95200" in user_msg
 
     @pytest.mark.asyncio
     async def test_degrade_returns_flat(self):

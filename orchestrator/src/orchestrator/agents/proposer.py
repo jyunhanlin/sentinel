@@ -13,46 +13,12 @@ from orchestrator.models import (
 
 class ProposerAgent(BaseAgent[TradeProposal]):
     output_model = TradeProposal
+    _skill_name = "proposer"
 
-    def _build_messages(self, **kwargs) -> list[dict[str, str]]:
+    def _build_prompt(self, **kwargs) -> str:
         snapshot: MarketSnapshot = kwargs["snapshot"]
         sentiment: SentimentReport = kwargs["sentiment"]
         market: MarketInterpretation = kwargs["market"]
-
-        system_prompt = (
-            "You are a crypto trade proposal generator for futures trading. "
-            "Based on sentiment analysis, technical analysis, and current market data, "
-            "generate a structured trade proposal with leverage recommendation.\n\n"
-            "Rules:\n"
-            "- If no clear edge, set side='flat' with position_size_risk_pct=0\n"
-            "- stop_loss MUST be below entry for long, above entry for short\n"
-            "- position_size_risk_pct: 0.5-2.0% typical range\n"
-            "- confidence: be conservative, rarely above 0.8\n"
-            "- suggested_leverage: based on volatility_pct:\n"
-            "    - volatility_pct < 2% → up to 20x\n"
-            "    - volatility_pct 2-4% → 10x\n"
-            "    - volatility_pct > 4% → 5x\n"
-            "    - if confidence < 0.5 → cap at 5x\n"
-            "- take_profit: list of price levels with close_pct\n"
-            "  (% of remaining position to close).\n"
-            "  Last level should have close_pct=100.\n"
-            '  Example: [{"price": 65800, "close_pct": 50}, '
-            '{"price": 67000, "close_pct": 100}]\n\n'
-            "Respond with ONLY a JSON object matching this schema:\n"
-            "{\n"
-            '  "symbol": "<symbol>",\n'
-            '  "side": "long" | "short" | "flat",\n'
-            '  "entry": {"type": "market"} or {"type": "limit", "price": <number>},\n'
-            '  "position_size_risk_pct": <float 0.0-2.0>,\n'
-            '  "stop_loss": <number or null>,\n'
-            '  "take_profit": [{"price": <number>, "close_pct": <int 1-100>}],\n'
-            '  "suggested_leverage": <int 1-50>,\n'
-            '  "time_horizon": "<e.g. 4h, 1d>",\n'
-            '  "confidence": <float 0.0-1.0>,\n'
-            '  "invalid_if": ["<condition>"],\n'
-            '  "rationale": "<1-2 sentence explanation>"\n'
-            "}"
-        )
 
         key_levels_str = ", ".join(
             f"{kl.type}={kl.price}" for kl in market.key_levels
@@ -60,7 +26,7 @@ class ProposerAgent(BaseAgent[TradeProposal]):
 
         risk_flags_str = ", ".join(market.risk_flags) or "none"
 
-        user_prompt = (
+        data = (
             f"=== Market Data ===\n"
             f"Symbol: {snapshot.symbol}\n"
             f"Current Price: {snapshot.current_price}\n"
@@ -74,14 +40,13 @@ class ProposerAgent(BaseAgent[TradeProposal]):
             f"Trend: {market.trend}\n"
             f"Volatility: {market.volatility_regime} ({market.volatility_pct:.1f}%)\n"
             f"Key Levels: {key_levels_str}\n"
-            f"Risk Flags: {risk_flags_str}\n\n"
-            f"Generate a trade proposal for {snapshot.symbol}."
+            f"Risk Flags: {risk_flags_str}"
         )
 
-        return [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
+        return (
+            f"Use the {self._skill_name} skill.\n\n"
+            f"{data}"
+        )
 
     def _get_default_output(self) -> TradeProposal:
         return TradeProposal(
