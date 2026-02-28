@@ -238,6 +238,41 @@ class TestClaudeCLIBackend:
                 )
 
     @pytest.mark.asyncio
+    async def test_complete_without_system_prompt(self):
+        """Skill-based agents send a single user message — no --system-prompt flag."""
+        backend = ClaudeCLIBackend()
+
+        cli_output = json.dumps({
+            "result": '```json\n{"score": 42}\n```',
+            "cost_usd": 0.01,
+            "duration_ms": 1500,
+            "num_turns": 1,
+            "is_error": False,
+            "session_id": "test-session",
+        })
+
+        mock_process = AsyncMock()
+        mock_process.communicate.return_value = (cli_output.encode(), b"")
+        mock_process.returncode = 0
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            result = await backend.complete(
+                messages=[
+                    {"role": "user", "content": "Use the sentiment skill.\n\nData: ..."},
+                ],
+                model="sonnet",
+                temperature=0.2,
+                max_tokens=2000,
+            )
+
+        assert result.content == '```json\n{"score": 42}\n```'
+
+        # Verify --system-prompt is NOT in the command
+        exec_args = mock_exec.call_args
+        cmd_args = exec_args[0]
+        assert "--system-prompt" not in cmd_args
+
+    @pytest.mark.asyncio
     async def test_complete_raises_on_timeout(self):
         backend = ClaudeCLIBackend(timeout=1)
 
