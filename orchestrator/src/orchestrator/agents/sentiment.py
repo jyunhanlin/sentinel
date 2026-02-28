@@ -24,8 +24,7 @@ class SentimentAgent(BaseAgent[SentimentReport]):
         )
 
         return (
-            f"Use the {self._skill_name} skill to analyze the following market data.\n"
-            f"Read .claude/skills/{self._skill_name}/SKILL.md for instructions.\n\n"
+            f"Use the {self._skill_name} skill.\n\n"
             f"=== Market Data ===\n{data}"
         )
 
