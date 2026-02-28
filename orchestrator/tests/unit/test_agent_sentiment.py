@@ -50,7 +50,10 @@ class TestSentimentAgent:
     async def test_prompt_references_skill_and_contains_data(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(
-            content='```json\n{"sentiment_score": 50, "key_events": [], "sources": [], "confidence": 0.5}\n```',
+            content=(
+                '```json\n{"sentiment_score": 50, "key_events": [],'
+                ' "sources": [], "confidence": 0.5}\n```'
+            ),
             model="test",
             input_tokens=200,
             output_tokens=100,

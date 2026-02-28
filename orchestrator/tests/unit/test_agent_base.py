@@ -82,7 +82,8 @@ class TestSkillBasedAgent:
         mock_client.call.return_value = LLMCallResult(
             content=(
                 "## Analysis\n\n"
-                "The funding rate is slightly positive at 0.03%, indicating mild bullish sentiment.\n"
+                "The funding rate is slightly positive at 0.03%, "
+                "indicating mild bullish sentiment.\n"
                 "Volume is stable. Price action shows higher lows.\n\n"
                 "```json\n"
                 '{"sentiment_score": 62, "key_events": '
