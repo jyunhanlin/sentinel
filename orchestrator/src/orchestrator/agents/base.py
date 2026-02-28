@@ -22,6 +22,7 @@ class AgentResult[T: BaseModel](BaseModel):
 
 class BaseAgent[T: BaseModel](ABC):
     output_model: type[T]
+    _skill_name: str = ""
 
     def __init__(self, client: LLMClient, max_retries: int = 1) -> None:
         self._client = client
@@ -74,9 +75,24 @@ class BaseAgent[T: BaseModel](ABC):
             messages=messages,
         )
 
-    @abstractmethod
     def _build_messages(self, **kwargs) -> list[dict[str, str]]:
-        ...
+        """Build messages for LLM call.
+
+        Skill-based agents override _build_prompt() and this method
+        wraps the prompt as a single user message (no system message).
+        Legacy agents can override this method directly.
+        """
+        prompt = self._build_prompt(**kwargs)
+        return [{"role": "user", "content": prompt}]
+
+    def _build_prompt(self, **kwargs) -> str:
+        """Build prompt string for skill-based agents.
+
+        Subclasses should override this to format data and reference a skill.
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement _build_prompt() or _build_messages()"
+        )
 
     @abstractmethod
     def _get_default_output(self) -> T:

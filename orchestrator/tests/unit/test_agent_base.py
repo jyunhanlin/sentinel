@@ -28,6 +28,83 @@ class FakeAgent(BaseAgent[SentimentReport]):
         ]
 
 
+class SkillFakeAgent(BaseAgent[SentimentReport]):
+    """Agent that uses skill-based prompt instead of messages."""
+
+    output_model = SentimentReport
+    _skill_name = "sentiment"
+
+    def _build_prompt(self, **kwargs) -> str:
+        return f"Use the {self._skill_name} skill.\n\nData: test data"
+
+    def _get_default_output(self) -> SentimentReport:
+        return SentimentReport(
+            sentiment_score=50,
+            key_events=[],
+            sources=[],
+            confidence=0.1,
+        )
+
+
+class TestSkillBasedAgent:
+    @pytest.mark.asyncio
+    async def test_skill_prompt_sent_as_user_message(self):
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.call.return_value = LLMCallResult(
+            content=(
+                "Analysis: looks bullish\n\n"
+                '```json\n{"sentiment_score": 72, "key_events": [],'
+                ' "sources": ["data"], "confidence": 0.8}\n```'
+            ),
+            model="test",
+            input_tokens=200,
+            output_tokens=100,
+            latency_ms=500,
+        )
+
+        agent = SkillFakeAgent(client=mock_client)
+        result = await agent.analyze()
+
+        assert result.output.sentiment_score == 72
+        assert result.degraded is False
+
+        # Verify prompt is sent as single user message (no system message)
+        call_args = mock_client.call.call_args
+        messages = call_args[0][0]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        assert "sentiment" in messages[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_skill_response_with_analysis_text_before_json(self):
+        """Skill responses include thinking text before the JSON block."""
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.call.return_value = LLMCallResult(
+            content=(
+                "## Analysis\n\n"
+                "The funding rate is slightly positive at 0.03%, "
+                "indicating mild bullish sentiment.\n"
+                "Volume is stable. Price action shows higher lows.\n\n"
+                "```json\n"
+                '{"sentiment_score": 62, "key_events": '
+                '[{"event": "stable funding rate", "impact": "positive", "source": "market"}], '
+                '"sources": ["market_data"], "confidence": 0.6}\n'
+                "```\n\n"
+                "This concludes the analysis."
+            ),
+            model="test",
+            input_tokens=300,
+            output_tokens=200,
+            latency_ms=800,
+        )
+
+        agent = SkillFakeAgent(client=mock_client)
+        result = await agent.analyze()
+
+        assert result.output.sentiment_score == 62
+        assert result.degraded is False
+
+
 class TestBaseAgent:
     @pytest.mark.asyncio
     async def test_successful_call(self):

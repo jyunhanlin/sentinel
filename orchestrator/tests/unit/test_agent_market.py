@@ -24,12 +24,12 @@ def make_snapshot() -> MarketSnapshot:
 
 class TestMarketAgent:
     @pytest.mark.asyncio
-    async def test_prompt_includes_volatility_pct(self):
+    async def test_prompt_references_skill_and_contains_data(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(
             content=(
-                '{"trend": "up", "volatility_regime": "medium", "volatility_pct": 2.3, '
-                '"key_levels": [], "risk_flags": []}'
+                '```json\n{"trend": "up", "volatility_regime": "medium", "volatility_pct": 2.3, '
+                '"key_levels": [], "risk_flags": []}\n```'
             ),
             model="test",
             input_tokens=200,
@@ -42,17 +42,24 @@ class TestMarketAgent:
 
         call_args = mock_client.call.call_args
         messages = call_args[0][0] if call_args[0] else call_args[1]["messages"]
-        system_prompt = messages[0]["content"]
-        assert "volatility_pct" in system_prompt
+
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+
+        prompt = messages[0]["content"]
+        assert "market" in prompt.lower()
+        assert "skill" in prompt.lower()
+        assert "BTC/USDT:USDT" in prompt
 
     @pytest.mark.asyncio
     async def test_successful_analysis(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(
             content=(
-                '{"trend": "up", "volatility_regime": "medium", '
+                "## Technical Analysis\nUptrend with medium volatility.\n\n"
+                '```json\n{"trend": "up", "volatility_regime": "medium", '
                 '"key_levels": [{"type": "support", "price": 93000}], '
-                '"risk_flags": ["funding_elevated"]}'
+                '"risk_flags": ["funding_elevated"]}\n```'
             ),
             model="test",
             input_tokens=200,

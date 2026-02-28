@@ -28,9 +28,10 @@ class TestSentimentAgent:
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(
             content=(
-                '{"sentiment_score": 72, "key_events": '
+                "## Analysis\nBullish signals observed.\n\n"
+                '```json\n{"sentiment_score": 72, "key_events": '
                 '[{"event": "BTC rally", "impact": "positive", "source": "market"}], '
-                '"sources": ["market_data"], "confidence": 0.75}'
+                '"sources": ["market_data"], "confidence": 0.75}\n```'
             ),
             model="test",
             input_tokens=200,
@@ -46,10 +47,13 @@ class TestSentimentAgent:
         assert result.degraded is False
 
     @pytest.mark.asyncio
-    async def test_prompt_contains_market_data(self):
+    async def test_prompt_references_skill_and_contains_data(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(
-            content='{"sentiment_score": 50, "key_events": [], "sources": [], "confidence": 0.5}',
+            content=(
+                '```json\n{"sentiment_score": 50, "key_events": [],'
+                ' "sources": [], "confidence": 0.5}\n```'
+            ),
             model="test",
             input_tokens=200,
             output_tokens=100,
@@ -61,9 +65,18 @@ class TestSentimentAgent:
 
         call_args = mock_client.call.call_args
         messages = call_args[0][0] if call_args[0] else call_args[1]["messages"]
-        user_msg = messages[-1]["content"]
-        assert "BTC/USDT:USDT" in user_msg
-        assert "95200" in user_msg
+
+        # Should be a single user message (no system message)
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+
+        prompt = messages[0]["content"]
+        # Should reference the skill
+        assert "sentiment" in prompt.lower()
+        assert "skill" in prompt.lower() or "SKILL.md" in prompt
+        # Should contain market data
+        assert "BTC/USDT:USDT" in prompt
+        assert "95200" in prompt
 
     @pytest.mark.asyncio
     async def test_degrade_returns_neutral(self):

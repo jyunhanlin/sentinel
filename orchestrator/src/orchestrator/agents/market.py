@@ -8,44 +8,25 @@ from orchestrator.models import MarketInterpretation, Trend, VolatilityRegime
 
 class MarketAgent(BaseAgent[MarketInterpretation]):
     output_model = MarketInterpretation
+    _skill_name = "market"
 
-    def _build_messages(self, **kwargs) -> list[dict[str, str]]:
+    def _build_prompt(self, **kwargs) -> str:
         snapshot: MarketSnapshot = kwargs["snapshot"]
-
-        system_prompt = (
-            "You are a crypto technical analyst. "
-            "Analyze the provided OHLCV data, funding rate, and volume to determine "
-            "market structure, trend, volatility regime, key price levels, and risk flags.\n\n"
-            "Calculate volatility_pct as the average true range of the last 14 candles "
-            "divided by current price, expressed as a percentage (e.g. 2.3 means 2.3%).\n\n"
-            "Respond with ONLY a JSON object matching this schema:\n"
-            "{\n"
-            '  "trend": "up" | "down" | "range",\n'
-            '  "volatility_regime": "low" | "medium" | "high",\n'
-            '  "volatility_pct": <float>,\n'
-            '  "key_levels": [{"type": "support|resistance", "price": <number>}],\n'
-            '  "risk_flags": ["<flag_name>"]  '
-            "// e.g. funding_elevated, oi_near_ath, volume_declining\n"
-            "}"
-        )
-
         ohlcv_summary = summarize_ohlcv(snapshot.ohlcv, max_candles=20)
 
-        user_prompt = (
+        data = (
             f"Symbol: {snapshot.symbol}\n"
             f"Current Price: {snapshot.current_price}\n"
             f"24h Volume: {snapshot.volume_24h:,.0f}\n"
             f"Funding Rate: {snapshot.funding_rate:.6f}\n"
             f"Timeframe: {snapshot.timeframe}\n\n"
-            f"OHLCV Data ({len(snapshot.ohlcv)} candles):\n{ohlcv_summary}\n\n"
-            "Identify the trend direction, volatility regime, key support/resistance levels, "
-            "and any risk flags from the data."
+            f"OHLCV Data ({len(snapshot.ohlcv)} candles):\n{ohlcv_summary}"
         )
 
-        return [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
+        return (
+            f"Use the {self._skill_name} skill.\n\n"
+            f"=== Market Data ===\n{data}"
+        )
 
     def _get_default_output(self) -> MarketInterpretation:
         return MarketInterpretation(
