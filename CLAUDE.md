@@ -19,6 +19,10 @@ uv run ruff check src/ tests/
 
 See `docs/plans/2026-02-18-sentinel-design.md`
 
+## Worktrees
+
+Git worktrees are stored in `.worktrees/` at the project root.
+
 ## Conventions
 
 - Immutable models: all Pydantic models use `frozen=True`
