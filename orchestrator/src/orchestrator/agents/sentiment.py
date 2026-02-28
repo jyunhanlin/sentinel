@@ -8,41 +8,26 @@ from orchestrator.models import SentimentReport
 
 class SentimentAgent(BaseAgent[SentimentReport]):
     output_model = SentimentReport
+    _skill_name = "sentiment"
 
-    def _build_messages(self, **kwargs) -> list[dict[str, str]]:
+    def _build_prompt(self, **kwargs) -> str:
         snapshot: MarketSnapshot = kwargs["snapshot"]
-
-        system_prompt = (
-            "You are a crypto market sentiment analyst. "
-            "Analyze the provided market data and infer the current market sentiment.\n\n"
-            "Respond with ONLY a JSON object matching this schema:\n"
-            "{\n"
-            '  "sentiment_score": <int 0-100, 50=neutral, >50=bullish, <50=bearish>,\n'
-            '  "key_events": [{"event": "<desc>", "impact": "positive|negative|neutral", '
-            '"source": "<source>"}],\n'
-            '  "sources": ["<list of data sources used>"],\n'
-            '  "confidence": <float 0.0-1.0>\n'
-            "}"
-        )
-
         ohlcv_summary = summarize_ohlcv(snapshot.ohlcv, max_candles=10)
 
-        user_prompt = (
+        data = (
             f"Symbol: {snapshot.symbol}\n"
             f"Current Price: {snapshot.current_price}\n"
             f"24h Volume: {snapshot.volume_24h:,.0f}\n"
             f"Funding Rate: {snapshot.funding_rate:.6f}\n"
             f"Timeframe: {snapshot.timeframe}\n\n"
-            f"Recent OHLCV ({len(snapshot.ohlcv)} candles):\n{ohlcv_summary}\n\n"
-            "Based on this market data and your knowledge of crypto markets, "
-            "analyze the current sentiment. Consider price action, volume trends, "
-            "and funding rate implications."
+            f"Recent OHLCV ({len(snapshot.ohlcv)} candles):\n{ohlcv_summary}"
         )
 
-        return [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
+        return (
+            f"Use the {self._skill_name} skill to analyze the following market data.\n"
+            f"Read .claude/skills/{self._skill_name}/SKILL.md for instructions.\n\n"
+            f"=== Market Data ===\n{data}"
+        )
 
     def _get_default_output(self) -> SentimentReport:
         return SentimentReport(
