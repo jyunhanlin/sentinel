@@ -17,7 +17,7 @@ uv run ruff check src/ tests/
 
 ## Architecture
 
-See `.claude/plans/2026-02-18-sentinel-design.md`
+See `docs/plans/2026-02-18-sentinel-design.md`
 
 ## Conventions
 
