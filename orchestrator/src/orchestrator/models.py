@@ -32,13 +32,13 @@ class VolatilityRegime(StrEnum):
 class KeyEvent(BaseModel, frozen=True):
     event: str
     impact: str
-    source: str
+    source: str = ""
 
 
 class SentimentReport(BaseModel, frozen=True):
     sentiment_score: int = Field(ge=0, le=100)
-    key_events: list[KeyEvent]
-    sources: list[str]
+    key_events: list[KeyEvent] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
 
 
