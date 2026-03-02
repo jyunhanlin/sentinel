@@ -1165,6 +1165,7 @@ name = "orchestrator"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "aiosqlite" },
     { name = "apscheduler" },
     { name = "ccxt" },
@@ -1187,6 +1188,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.13.3" },
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "apscheduler", specifier = ">=3.11.2" },
     { name = "ccxt", specifier = ">=4.5.38" },
