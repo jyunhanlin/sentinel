@@ -2,22 +2,23 @@
 
 Multi-LLM crypto trade proposal system with semi-auto execution via Telegram.
 
-Three AI agents analyze sentiment, market structure, and generate trade proposals. Proposals pass through risk checks and require manual approval via Telegram inline keyboard before execution (paper or live).
+Five AI agents analyze technical structure (short & long term), positioning, catalysts, and cross-market correlations, then a Proposer agent synthesizes a trade proposal. Proposals pass through risk checks and require manual approval via Telegram inline keyboard before execution (paper or live).
 
 ## Architecture
 
 ```
 Scheduler (every N min)
     │
-    ├─ LLM-1 (Sentiment) ──┐
-    │                       ├─ LLM-3 (Proposer) → Aggregator → Risk Check
-    ├─ LLM-2 (Market) ─────┘                                      │
-    │                                                             ▼
-    │                                              TG Push [Approve / Reject]
-    │                                                             │
-    │                                                    OrderExecutor (Paper/Live)
-    │                                                             │
-    └─ SL/TP Monitor ──────────────────────────────── Close Report
+    ├─ Technical (short-term) ──┐
+    ├─ Technical (long-term) ───┤
+    ├─ Positioning ─────────────┼─ Proposer → Aggregator → Risk Check
+    ├─ Catalyst ────────────────┤                              │
+    ├─ Correlation ─────────────┘                              ▼
+    │                                           TG Push [Approve / Reject]
+    │                                                          │
+    │                                                 OrderExecutor (Paper/Live)
+    │                                                          │
+    └─ SL/TP Monitor ─────────────────────────────── Close Report
 ```
 
 ## Prerequisites
@@ -52,7 +53,7 @@ All config via environment variables or `.env` file at the repo root.
 
 | Variable                  | Description                                |
 | ------------------------- | ------------------------------------------ |
-| `ANTHROPIC_API_KEY`       | Anthropic API key for Claude               |
+| `ANTHROPIC_API_KEY`       | Anthropic API key (required for `api` backend) |
 | `TELEGRAM_BOT_TOKEN`      | Telegram bot token from @BotFather         |
 | `TELEGRAM_ADMIN_CHAT_IDS` | Comma-separated chat IDs (admin whitelist) |
 
@@ -63,8 +64,10 @@ All config via environment variables or `.env` file at the repo root.
 | `EXCHANGE_ID`               | `binance`                     | CCXT exchange ID                                      |
 | `EXCHANGE_API_KEY`          | (empty)                       | Exchange API key (live mode only)                     |
 | `EXCHANGE_API_SECRET`       | (empty)                       | Exchange API secret (live mode only)                  |
+| `LLM_BACKEND`               | `cli`                         | LLM backend: `api` (LiteLLM) or `cli` (Claude CLI)   |
 | `LLM_MODEL`                 | `anthropic/claude-sonnet-4-6` | Default LLM model                                     |
 | `LLM_MODEL_PREMIUM`         | `anthropic/claude-opus-4-6`   | Premium model for `/run` override                     |
+| `CLAUDE_CLI_TIMEOUT`         | `300`                         | CLI subprocess timeout in seconds                     |
 | `DATABASE_URL`              | `sqlite:///data/sentinel.db`  | SQLite database path                                  |
 | `PIPELINE_INTERVAL_MINUTES` | `15`                          | Auto-run interval                                     |
 | `PIPELINE_SYMBOLS`          | `BTC/USDT:USDT,ETH/USDT:USDT` | Symbols to analyze                                    |
@@ -122,12 +125,12 @@ uv run ruff format src/ tests/
 sentinel/
 ├── orchestrator/              # Python project (uv)
 │   └── src/orchestrator/
-│       ├── agents/            # LLM agents (sentiment, market, proposer)
+│       ├── agents/            # LLM agents (technical, positioning, catalyst, correlation, proposer)
 │       ├── approval/          # Approval state machine + models
 │       ├── eval/              # Golden dataset evaluation framework
-│       ├── exchange/          # CCXT client, data fetcher, paper engine
+│       ├── exchange/          # CCXT client, data fetcher, external data (DXY, S&P, BTC.D), paper engine
 │       ├── execution/         # OrderExecutor (paper/live)
-│       ├── llm/               # LiteLLM wrapper + schema validation
+│       ├── llm/               # LiteLLM / Claude CLI backend + schema validation
 │       ├── pipeline/          # Runner, scheduler, aggregator
 │       ├── risk/              # Risk checker + position sizer
 │       ├── stats/             # Performance statistics calculator
@@ -145,7 +148,7 @@ sentinel/
 | --------------- | -------------------------------------------------------- |
 | Language        | Python 3.12+                                             |
 | Package manager | [uv](https://docs.astral.sh/uv/)                         |
-| LLM             | Claude via [LiteLLM](https://github.com/BerriAI/litellm) |
+| LLM             | Claude via [LiteLLM](https://github.com/BerriAI/litellm) or Claude CLI |
 | Exchange        | [CCXT](https://github.com/ccxt/ccxt) (async)             |
 | Database        | SQLite + [SQLModel](https://sqlmodel.tiangolo.com/)      |
 | Telegram        | [python-telegram-bot](https://python-telegram-bot.org/)  |
