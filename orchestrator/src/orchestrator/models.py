@@ -26,6 +26,12 @@ class VolatilityRegime(StrEnum):
     HIGH = "high"
 
 
+class Momentum(StrEnum):
+    BULLISH = "bullish"
+    BEARISH = "bearish"
+    NEUTRAL = "neutral"
+
+
 # --- Sentiment ---
 
 
@@ -61,6 +67,70 @@ class MarketInterpretation(BaseModel, frozen=True):
     volatility_pct: float = Field(ge=0.0, default=0.0)
     key_levels: list[KeyLevel]
     risk_flags: list[str]
+
+
+# --- Technical Analysis (replaces MarketInterpretation for new pipeline) ---
+
+
+class TechnicalAnalysis(BaseModel, frozen=True):
+    label: str  # "short_term" or "long_term"
+    trend: Trend
+    trend_strength: float = Field(ge=0.0)  # ADX value
+    volatility_regime: VolatilityRegime
+    volatility_pct: float = Field(ge=0.0, default=0.0)
+    momentum: Momentum
+    rsi: float = Field(ge=0.0, le=100.0)
+    key_levels: list[KeyLevel]
+    risk_flags: list[str]
+    # Long-term only
+    above_200w_ma: bool | None = None
+    bull_support_band_status: str | None = None  # "above" | "within" | "below"
+
+
+# --- Positioning ---
+
+
+class PositioningAnalysis(BaseModel, frozen=True):
+    funding_trend: str  # "rising" | "falling" | "stable"
+    funding_extreme: bool
+    oi_change_pct: float
+    retail_bias: str  # "long" | "short" | "neutral"
+    smart_money_bias: str  # "long" | "short" | "neutral"
+    squeeze_risk: str  # "long_squeeze" | "short_squeeze" | "none"
+    liquidity_assessment: str  # "thin" | "normal" | "deep"
+    risk_flags: list[str]
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+# --- Catalyst ---
+
+
+class CatalystEvent(BaseModel, frozen=True):
+    event: str
+    time: str  # ISO timestamp or "ongoing"
+    impact: str  # "high" | "medium" | "low"
+    direction_bias: str  # "bullish" | "bearish" | "uncertain"
+
+
+class CatalystReport(BaseModel, frozen=True):
+    upcoming_events: list[CatalystEvent]
+    active_events: list[CatalystEvent]
+    risk_level: str  # "low" | "medium" | "high"
+    recommendation: str  # "proceed" | "reduce_size" | "wait"
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+# --- Correlation ---
+
+
+class CorrelationAnalysis(BaseModel, frozen=True):
+    dxy_trend: str  # "strengthening" | "weakening" | "stable"
+    dxy_impact: str  # "headwind" | "tailwind" | "neutral"
+    sp500_regime: str  # "risk_on" | "risk_off" | "neutral"
+    btc_dominance_trend: str  # "rising" | "falling" | "stable"
+    cross_market_alignment: str  # "favorable" | "unfavorable" | "mixed"
+    risk_flags: list[str]
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 # --- Trade Proposal ---
