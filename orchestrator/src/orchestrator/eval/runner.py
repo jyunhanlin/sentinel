@@ -12,7 +12,13 @@ from orchestrator.exchange.data_fetcher import MarketSnapshot
 
 if TYPE_CHECKING:
     from orchestrator.agents.base import BaseAgent
-    from orchestrator.models import MarketInterpretation, SentimentReport, TradeProposal
+    from orchestrator.models import (
+        CatalystReport,
+        CorrelationAnalysis,
+        PositioningAnalysis,
+        TechnicalAnalysis,
+        TradeProposal,
+    )
 
 logger = structlog.get_logger(__name__)
 
@@ -38,12 +44,18 @@ class EvalRunner:
     def __init__(
         self,
         *,
-        sentiment_agent: BaseAgent[SentimentReport],
-        market_agent: BaseAgent[MarketInterpretation],
+        technical_short_agent: BaseAgent[TechnicalAnalysis],
+        technical_long_agent: BaseAgent[TechnicalAnalysis],
+        positioning_agent: BaseAgent[PositioningAnalysis],
+        catalyst_agent: BaseAgent[CatalystReport],
+        correlation_agent: BaseAgent[CorrelationAnalysis],
         proposer_agent: BaseAgent[TradeProposal],
     ) -> None:
-        self._sentiment_agent = sentiment_agent
-        self._market_agent = market_agent
+        self._technical_short_agent = technical_short_agent
+        self._technical_long_agent = technical_long_agent
+        self._positioning_agent = positioning_agent
+        self._catalyst_agent = catalyst_agent
+        self._correlation_agent = correlation_agent
         self._proposer_agent = proposer_agent
         self._scorer = RuleScorer()
 
@@ -81,25 +93,45 @@ class EvalRunner:
         snapshot = self._build_snapshot(case.snapshot)
         all_scores: list[ScoreResult] = []
 
-        # Run agents
-        sentiment_result = await self._sentiment_agent.analyze(snapshot=snapshot)
-        market_result = await self._market_agent.analyze(snapshot=snapshot)
-        proposer_result = await self._proposer_agent.analyze(
-            snapshot=snapshot,
-            sentiment=sentiment_result.output,
-            market=market_result.output,
+        # Run analysis agents
+        tech_short_result = await self._technical_short_agent.analyze(snapshot=snapshot)
+        tech_long_result = await self._technical_long_agent.analyze(snapshot=snapshot)
+        positioning_result = await self._positioning_agent.analyze(
+            symbol=snapshot.symbol, current_price=snapshot.current_price,
+            funding_rate_history=[], open_interest=0, oi_change_pct=0.0,
+            long_short_ratio=1.0, top_trader_long_short_ratio=1.0,
+            order_book_summary={"bid_depth": 0, "ask_depth": 0},
+        )
+        catalyst_result = await self._catalyst_agent.analyze(
+            symbol=snapshot.symbol, current_price=snapshot.current_price,
+            economic_calendar=[], exchange_announcements=[],
+        )
+        correlation_result = await self._correlation_agent.analyze(
+            symbol=snapshot.symbol,
+            dxy_data={"current": 0, "change_pct": 0, "trend_5d": []},
+            sp500_data={"current": 0, "change_pct": 0, "trend_5d": []},
+            btc_dominance={"current": 0, "change_7d": 0},
         )
 
-        # Score each agent output
-        if case.expected.sentiment is not None:
-            all_scores.extend(
-                self._scorer.score_sentiment(sentiment_result.output, case.expected.sentiment)
-            )
+        # Run proposer with all analysis outputs
+        proposer_result = await self._proposer_agent.analyze(
+            snapshot=snapshot,
+            technical_short=tech_short_result.output,
+            technical_long=tech_long_result.output,
+            positioning=positioning_result.output,
+            catalyst=catalyst_result.output,
+            correlation=correlation_result.output,
+        )
 
+        # Score technical analysis (maps to legacy "market" expectations)
         if case.expected.market is not None:
             all_scores.extend(
-                self._scorer.score_market(market_result.output, case.expected.market)
+                self._scorer.score_market(tech_short_result.output, case.expected.market)
             )
+
+        # Score sentiment (deprecated — skip with warning)
+        if case.expected.sentiment is not None:
+            logger.warning("eval_sentiment_deprecated", case_id=case.id)
 
         if case.expected.proposal is not None:
             all_scores.extend(

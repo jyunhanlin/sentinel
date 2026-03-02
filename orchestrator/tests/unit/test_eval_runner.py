@@ -10,20 +10,92 @@ from orchestrator.eval.dataset import (
 from orchestrator.eval.runner import EvalReport, EvalRunner
 
 
+def _make_mock_agents(*, proposal_side="long"):
+    """Create mock agents for the 5-agent + proposer pipeline."""
+    from orchestrator.models import (
+        CatalystReport,
+        CorrelationAnalysis,
+        EntryOrder,
+        Momentum,
+        PositioningAnalysis,
+        Side,
+        TakeProfit,
+        TechnicalAnalysis,
+        TradeProposal,
+        Trend,
+        VolatilityRegime,
+    )
+
+    tech_short = AsyncMock()
+    tech_short.analyze.return_value = MagicMock(
+        output=TechnicalAnalysis(
+            label="short_term", trend=Trend.UP, trend_strength=28.0,
+            volatility_regime=VolatilityRegime.MEDIUM, volatility_pct=2.5,
+            momentum=Momentum.BULLISH, rsi=62.0, key_levels=[], risk_flags=[],
+        ),
+        degraded=False, llm_calls=[], messages=[],
+    )
+    tech_long = AsyncMock()
+    tech_long.analyze.return_value = MagicMock(
+        output=TechnicalAnalysis(
+            label="long_term", trend=Trend.UP, trend_strength=25.0,
+            volatility_regime=VolatilityRegime.MEDIUM, volatility_pct=2.0,
+            momentum=Momentum.BULLISH, rsi=58.0, key_levels=[], risk_flags=[],
+        ),
+        degraded=False, llm_calls=[], messages=[],
+    )
+    positioning = AsyncMock()
+    positioning.analyze.return_value = MagicMock(
+        output=PositioningAnalysis(
+            funding_trend="stable", funding_extreme=False, oi_change_pct=0.0,
+            retail_bias="neutral", smart_money_bias="neutral", squeeze_risk="none",
+            liquidity_assessment="normal", risk_flags=[], confidence=0.5,
+        ),
+        degraded=False, llm_calls=[], messages=[],
+    )
+    catalyst = AsyncMock()
+    catalyst.analyze.return_value = MagicMock(
+        output=CatalystReport(
+            upcoming_events=[], active_events=[],
+            risk_level="low", recommendation="proceed", confidence=0.5,
+        ),
+        degraded=False, llm_calls=[], messages=[],
+    )
+    correlation = AsyncMock()
+    correlation.analyze.return_value = MagicMock(
+        output=CorrelationAnalysis(
+            dxy_trend="stable", dxy_impact="neutral", sp500_regime="neutral",
+            btc_dominance_trend="stable", cross_market_alignment="mixed",
+            risk_flags=[], confidence=0.5,
+        ),
+        degraded=False, llm_calls=[], messages=[],
+    )
+    proposer = AsyncMock()
+    side_map = {"long": Side.LONG, "short": Side.SHORT, "flat": Side.FLAT}
+    proposer.analyze.return_value = MagicMock(
+        output=TradeProposal(
+            symbol="BTC/USDT:USDT", side=side_map[proposal_side],
+            entry=EntryOrder(type="market"),
+            position_size_risk_pct=1.0, stop_loss=93000.0,
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)],
+            time_horizon="4h", confidence=0.7, invalid_if=[], rationale="test",
+        ),
+        degraded=False, llm_calls=[], messages=[],
+    )
+
+    return {
+        "technical_short_agent": tech_short,
+        "technical_long_agent": tech_long,
+        "positioning_agent": positioning,
+        "catalyst_agent": catalyst,
+        "correlation_agent": correlation,
+        "proposer_agent": proposer,
+    }
+
+
 class TestEvalRunner:
     @pytest.mark.asyncio
     async def test_run_single_passing_case(self):
-        from orchestrator.models import (
-            EntryOrder,
-            MarketInterpretation,
-            SentimentReport,
-            Side,
-            TakeProfit,
-            TradeProposal,
-            Trend,
-            VolatilityRegime,
-        )
-
         case = EvalCase(
             id="bull_breakout",
             description="Strong uptrend",
@@ -33,38 +105,8 @@ class TestEvalRunner:
             ),
         )
 
-        # Mock agents to return expected outputs
-        sentiment_agent = AsyncMock()
-        sentiment_agent.analyze.return_value = MagicMock(
-            output=SentimentReport(
-                sentiment_score=75, key_events=[], sources=["test"], confidence=0.8
-            ),
-            degraded=False, llm_calls=[], messages=[],
-        )
-        market_agent = AsyncMock()
-        market_agent.analyze.return_value = MagicMock(
-            output=MarketInterpretation(
-                trend=Trend.UP, volatility_regime=VolatilityRegime.MEDIUM,
-                key_levels=[], risk_flags=[],
-            ),
-            degraded=False, llm_calls=[], messages=[],
-        )
-        proposer_agent = AsyncMock()
-        proposer_agent.analyze.return_value = MagicMock(
-            output=TradeProposal(
-                symbol="BTC/USDT:USDT", side=Side.LONG, entry=EntryOrder(type="market"),
-                position_size_risk_pct=1.0, stop_loss=93000.0,
-                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
-                time_horizon="4h", confidence=0.7, invalid_if=[], rationale="Bullish",
-            ),
-            degraded=False, llm_calls=[], messages=[],
-        )
-
-        runner = EvalRunner(
-            sentiment_agent=sentiment_agent,
-            market_agent=market_agent,
-            proposer_agent=proposer_agent,
-        )
+        agents = _make_mock_agents(proposal_side="long")
+        runner = EvalRunner(**agents)
 
         report = await runner.run(cases=[case], dataset_name="test")
         assert isinstance(report, EvalReport)
@@ -74,17 +116,6 @@ class TestEvalRunner:
 
     @pytest.mark.asyncio
     async def test_run_single_failing_case(self):
-        from orchestrator.models import (
-            EntryOrder,
-            MarketInterpretation,
-            SentimentReport,
-            Side,
-            TakeProfit,
-            TradeProposal,
-            Trend,
-            VolatilityRegime,
-        )
-
         case = EvalCase(
             id="bear_divergence",
             description="Should be short",
@@ -94,37 +125,8 @@ class TestEvalRunner:
             ),
         )
 
-        sentiment_agent = AsyncMock()
-        sentiment_agent.analyze.return_value = MagicMock(
-            output=SentimentReport(
-                sentiment_score=50, key_events=[], sources=[], confidence=0.5
-            ),
-            degraded=False, llm_calls=[], messages=[],
-        )
-        market_agent = AsyncMock()
-        market_agent.analyze.return_value = MagicMock(
-            output=MarketInterpretation(
-                trend=Trend.UP, volatility_regime=VolatilityRegime.LOW,
-                key_levels=[], risk_flags=[],
-            ),
-            degraded=False, llm_calls=[], messages=[],
-        )
-        proposer_agent = AsyncMock()
-        proposer_agent.analyze.return_value = MagicMock(
-            output=TradeProposal(
-                symbol="BTC/USDT:USDT", side=Side.LONG, entry=EntryOrder(type="market"),
-                position_size_risk_pct=1.0, stop_loss=93000.0,
-                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
-                time_horizon="4h", confidence=0.7, invalid_if=[], rationale="wrong",
-            ),
-            degraded=False, llm_calls=[], messages=[],
-        )
-
-        runner = EvalRunner(
-            sentiment_agent=sentiment_agent,
-            market_agent=market_agent,
-            proposer_agent=proposer_agent,
-        )
+        agents = _make_mock_agents(proposal_side="long")
+        runner = EvalRunner(**agents)
 
         report = await runner.run(cases=[case], dataset_name="test")
         assert report.passed_cases == 0

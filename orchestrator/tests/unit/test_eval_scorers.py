@@ -1,13 +1,17 @@
 import pytest
 
-from orchestrator.eval.dataset import ExpectedProposal, ExpectedRange, ExpectedSentiment
+from orchestrator.eval.dataset import ExpectedMarket, ExpectedProposal, ExpectedRange
 from orchestrator.eval.scorers import RuleScorer, ScoreResult
 from orchestrator.models import (
     EntryOrder,
-    SentimentReport,
+    KeyLevel,
+    Momentum,
     Side,
     TakeProfit,
+    TechnicalAnalysis,
     TradeProposal,
+    Trend,
+    VolatilityRegime,
 )
 
 
@@ -38,30 +42,28 @@ class TestRuleScorer:
         side_result = next(r for r in results if r.field == "side")
         assert side_result.passed is False
 
-    def test_score_sentiment_range_pass(self):
+    def test_score_market_trend_pass(self):
         scorer = RuleScorer()
-        sentiment = SentimentReport(
-            sentiment_score=75, key_events=[], sources=["test"], confidence=0.8
+        technical = TechnicalAnalysis(
+            label="short_term", trend=Trend.UP, trend_strength=28.0,
+            volatility_regime=VolatilityRegime.MEDIUM, volatility_pct=2.5,
+            momentum=Momentum.BULLISH, rsi=62.0, key_levels=[], risk_flags=[],
         )
-        expected = ExpectedSentiment(
-            sentiment_score=ExpectedRange(min=60, max=90),
-            confidence=ExpectedRange(min=0.5),
-        )
-        results = scorer.score_sentiment(sentiment, expected)
+        expected = ExpectedMarket(trend=["up"])
+        results = scorer.score_market(technical, expected)
         assert all(r.passed for r in results)
 
-    def test_score_sentiment_range_fail(self):
+    def test_score_market_trend_fail(self):
         scorer = RuleScorer()
-        sentiment = SentimentReport(
-            sentiment_score=30, key_events=[], sources=["test"], confidence=0.3
+        technical = TechnicalAnalysis(
+            label="short_term", trend=Trend.DOWN, trend_strength=30.0,
+            volatility_regime=VolatilityRegime.HIGH, volatility_pct=5.0,
+            momentum=Momentum.BEARISH, rsi=35.0, key_levels=[], risk_flags=[],
         )
-        expected = ExpectedSentiment(
-            sentiment_score=ExpectedRange(min=60, max=90),
-            confidence=ExpectedRange(min=0.5),
-        )
-        results = scorer.score_sentiment(sentiment, expected)
+        expected = ExpectedMarket(trend=["up"], volatility_regime=["low", "medium"])
+        results = scorer.score_market(technical, expected)
         failed = [r for r in results if not r.passed]
-        assert len(failed) == 2  # both score and confidence fail
+        assert len(failed) == 2  # both trend and volatility fail
 
     def test_score_result_is_frozen(self):
         result = ScoreResult(field="test", passed=True, expected="x", actual="x")

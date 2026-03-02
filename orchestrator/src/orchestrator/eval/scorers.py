@@ -8,7 +8,7 @@ from orchestrator.eval.dataset import (
     ExpectedRange,
     ExpectedSentiment,
 )
-from orchestrator.models import MarketInterpretation, SentimentReport, TradeProposal
+from orchestrator.models import TechnicalAnalysis, TradeProposal
 
 
 class ScoreResult(BaseModel, frozen=True):
@@ -63,25 +63,8 @@ class RuleScorer:
 
         return results
 
-    def score_sentiment(
-        self, output: SentimentReport, expected: ExpectedSentiment
-    ) -> list[ScoreResult]:
-        results: list[ScoreResult] = []
-
-        if expected.sentiment_score is not None:
-            results.append(self._check_range(
-                "sentiment_score", float(output.sentiment_score), expected.sentiment_score
-            ))
-
-        if expected.confidence is not None:
-            results.append(self._check_range(
-                "confidence", output.confidence, expected.confidence
-            ))
-
-        return results
-
     def score_market(
-        self, output: MarketInterpretation, expected: ExpectedMarket
+        self, output: TechnicalAnalysis, expected: ExpectedMarket
     ) -> list[ScoreResult]:
         results: list[ScoreResult] = []
 
