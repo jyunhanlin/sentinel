@@ -1,0 +1,37 @@
+Codemap Generation Report — 2026-03-02
+=======================================
+
+Status: INITIAL GENERATION (no previous codemaps found)
+
+Files scanned: 50 Python source files
+Total lines: 7,534
+Package: orchestrator/src/orchestrator/
+
+Generated codemaps:
+  docs/CODEMAPS/architecture.md  — System diagram, pipeline flow, patterns
+  docs/CODEMAPS/backend.md       — Pipeline runner, agents, LLM, risk, execution
+  docs/CODEMAPS/data.md          — Database tables, repositories, domain models
+  docs/CODEMAPS/dependencies.md  — External services, libraries, file structure
+  docs/CODEMAPS/frontend.md      — Telegram bot commands, approval flow, formatters
+
+Architecture highlights:
+  - 5+1 parallel agent pipeline (technical×2, positioning, catalyst, correlation → proposer)
+  - Semi-auto approval via Telegram inline keyboards
+  - Dual LLM backend: Claude CLI subprocess or LiteLLM API
+  - Paper trading engine (677L) with SL/TP/liquidation, partial close, position add-on
+  - SQLite persistence with 6 repository classes
+
+Largest files:
+  telegram/bot.py        1,483 lines (consider splitting command handlers)
+  telegram/formatters.py   718 lines
+  exchange/paper_engine.py 677 lines
+  storage/repository.py    441 lines
+  pipeline/runner.py       385 lines
+  __main__.py              392 lines
+
+Staleness warnings: N/A (initial generation)
+
+Notes:
+  - eval/consistency.py has stale API (passes sentiment=None, market=None to proposer)
+  - exchange/external_data.py has stub methods: fetch_economic_calendar(), fetch_exchange_announcements()
+  - executor/ (Rust) directory not yet implemented
