@@ -6,11 +6,14 @@ from orchestrator.agents.base import AgentResult
 from orchestrator.exchange.data_fetcher import MarketSnapshot
 from orchestrator.llm.client import LLMCallResult
 from orchestrator.models import (
+    CatalystReport,
+    CorrelationAnalysis,
     EntryOrder,
-    MarketInterpretation,
-    SentimentReport,
+    Momentum,
+    PositioningAnalysis,
     Side,
     TakeProfit,
+    TechnicalAnalysis,
     TradeProposal,
     Trend,
     VolatilityRegime,
@@ -29,18 +32,34 @@ def _make_proposal(*, side=Side.LONG, risk_pct=1.0):
     )
 
 
-def _make_sentiment():
-    return SentimentReport(
-        sentiment_score=50, key_events=[], sources=["test"], confidence=0.5
+def _make_technical(label="short_term"):
+    return TechnicalAnalysis(
+        label=label, trend=Trend.UP, trend_strength=28.0,
+        volatility_regime=VolatilityRegime.MEDIUM, volatility_pct=2.3,
+        momentum=Momentum.BULLISH, rsi=62.0, key_levels=[], risk_flags=[],
     )
 
 
-def _make_market():
-    return MarketInterpretation(
-        trend=Trend.RANGE,
-        volatility_regime=VolatilityRegime.LOW,
-        key_levels=[],
-        risk_flags=[],
+def _make_positioning():
+    return PositioningAnalysis(
+        funding_trend="stable", funding_extreme=False, oi_change_pct=0.0,
+        retail_bias="neutral", smart_money_bias="neutral", squeeze_risk="none",
+        liquidity_assessment="normal", risk_flags=[], confidence=0.5,
+    )
+
+
+def _make_catalyst():
+    return CatalystReport(
+        upcoming_events=[], active_events=[],
+        risk_level="low", recommendation="proceed", confidence=0.5,
+    )
+
+
+def _make_correlation():
+    return CorrelationAnalysis(
+        dxy_trend="stable", dxy_impact="neutral", sp500_regime="neutral",
+        btc_dominance_trend="stable", cross_market_alignment="mixed",
+        risk_flags=[], confidence=0.5,
     )
 
 
@@ -65,62 +84,111 @@ def make_llm_call() -> LLMCallResult:
     )
 
 
+def _make_mock_external():
+    mock = AsyncMock()
+    mock.fetch_dxy_data.return_value = {"current": 0, "change_pct": 0, "trend_5d": []}
+    mock.fetch_sp500_data.return_value = {"current": 0, "change_pct": 0, "trend_5d": []}
+    mock.fetch_btc_dominance.return_value = {"current": 0, "change_7d": 0}
+    mock.fetch_economic_calendar.return_value = []
+    mock.fetch_exchange_announcements.return_value = []
+    return mock
+
+
+def _make_mock_fetcher(snapshot=None):
+    mock = AsyncMock()
+    mock.fetch_snapshot.return_value = snapshot or make_snapshot()
+    mock.fetch_positioning_data.return_value = {
+        "funding_rate_history": [], "open_interest": 0, "oi_change_pct": 0,
+        "long_short_ratio": 1.0, "top_trader_long_short_ratio": 1.0,
+        "order_book_summary": {"bid_depth": 0, "ask_depth": 0},
+    }
+    mock.fetch_macro_indicators.return_value = {
+        "ma_200w": 40000.0, "bull_support_upper": 65000.0, "bull_support_lower": 63000.0,
+    }
+    return mock
+
+
+def _make_analysis_agents(*, proposal_output=None):
+    """Create mock analysis agents returning default outputs."""
+    tech_short = AsyncMock()
+    tech_short.analyze.return_value = MagicMock(
+        output=_make_technical("short_term"), degraded=False, llm_calls=[], messages=[],
+    )
+    tech_long = AsyncMock()
+    tech_long.analyze.return_value = MagicMock(
+        output=_make_technical("long_term"), degraded=False, llm_calls=[], messages=[],
+    )
+    positioning = AsyncMock()
+    positioning.analyze.return_value = MagicMock(
+        output=_make_positioning(), degraded=False, llm_calls=[], messages=[],
+    )
+    catalyst = AsyncMock()
+    catalyst.analyze.return_value = MagicMock(
+        output=_make_catalyst(), degraded=False, llm_calls=[], messages=[],
+    )
+    correlation = AsyncMock()
+    correlation.analyze.return_value = MagicMock(
+        output=_make_correlation(), degraded=False, llm_calls=[], messages=[],
+    )
+    proposer = AsyncMock()
+    proposer.analyze.return_value = MagicMock(
+        output=proposal_output or _make_proposal(), degraded=False, llm_calls=[], messages=[],
+    )
+    return {
+        "technical_short_agent": tech_short,
+        "technical_long_agent": tech_long,
+        "positioning_agent": positioning,
+        "catalyst_agent": catalyst,
+        "correlation_agent": correlation,
+        "proposer_agent": proposer,
+    }
+
+
+def _make_runner(*, snapshot=None, proposal_output=None, **extra):
+    agents = _make_analysis_agents(proposal_output=proposal_output)
+    defaults = {
+        "data_fetcher": _make_mock_fetcher(snapshot),
+        "external_data_fetcher": _make_mock_external(),
+        "pipeline_repo": MagicMock(),
+        "llm_call_repo": MagicMock(),
+        "proposal_repo": MagicMock(),
+        **agents,
+    }
+    defaults.update(extra)
+    return PipelineRunner(**defaults), defaults
+
+
 class TestPipelineRunner:
     @pytest.mark.asyncio
     async def test_successful_run(self):
-        sentiment_result = AgentResult(
-            output=SentimentReport(
-                sentiment_score=72, key_events=[], sources=["test"], confidence=0.8
-            ),
-            degraded=False,
-            llm_calls=[make_llm_call()],
-        )
-        market_result = AgentResult(
-            output=MarketInterpretation(
-                trend=Trend.UP,
-                volatility_regime=VolatilityRegime.MEDIUM,
-                key_levels=[],
-                risk_flags=[],
-            ),
-            degraded=False,
-            llm_calls=[make_llm_call()],
-        )
-        proposal_result = AgentResult(
-            output=TradeProposal(
-                symbol="BTC/USDT:USDT",
-                side=Side.LONG,
-                entry=EntryOrder(type="market"),
-                position_size_risk_pct=1.5,
-                stop_loss=93000.0,
-                take_profit=[TakeProfit(price=97000.0, close_pct=100)],
-                time_horizon="4h",
-                confidence=0.75,
-                invalid_if=[],
-                rationale="Bullish",
-            ),
-            degraded=False,
-            llm_calls=[make_llm_call()],
+        proposal = TradeProposal(
+            symbol="BTC/USDT:USDT", side=Side.LONG,
+            entry=EntryOrder(type="market"),
+            position_size_risk_pct=1.5, stop_loss=93000.0,
+            take_profit=[TakeProfit(price=97000.0, close_pct=100)],
+            time_horizon="4h", confidence=0.75,
+            invalid_if=[], rationale="Bullish",
         )
 
-        mock_sentiment = AsyncMock()
-        mock_sentiment.analyze.return_value = sentiment_result
-        mock_market = AsyncMock()
-        mock_market.analyze.return_value = market_result
-        mock_proposer = AsyncMock()
-        mock_proposer.analyze.return_value = proposal_result
-        mock_fetcher = AsyncMock()
-        mock_fetcher.fetch_snapshot.return_value = make_snapshot()
-        mock_repo = MagicMock()
-        mock_repo.create_run.return_value = MagicMock(run_id="test-run")
+        # Override proposer with full AgentResult (including llm_calls)
+        proposer = AsyncMock()
+        proposer.analyze.return_value = AgentResult(
+            output=proposal, degraded=False, llm_calls=[make_llm_call()],
+        )
+        # Also override analysis agents with full AgentResults
+        tech_short = AsyncMock()
+        tech_short.analyze.return_value = AgentResult(
+            output=_make_technical("short_term"), degraded=False, llm_calls=[make_llm_call()],
+        )
+        tech_long = AsyncMock()
+        tech_long.analyze.return_value = AgentResult(
+            output=_make_technical("long_term"), degraded=False, llm_calls=[make_llm_call()],
+        )
 
-        runner = PipelineRunner(
-            data_fetcher=mock_fetcher,
-            sentiment_agent=mock_sentiment,
-            market_agent=mock_market,
-            proposer_agent=mock_proposer,
-            pipeline_repo=mock_repo,
-            llm_call_repo=MagicMock(),
-            proposal_repo=MagicMock(),
+        runner, _ = _make_runner(
+            proposer_agent=proposer,
+            technical_short_agent=tech_short,
+            technical_long_agent=tech_long,
         )
 
         result = await runner.execute("BTC/USDT:USDT")
@@ -132,61 +200,17 @@ class TestPipelineRunner:
 
     @pytest.mark.asyncio
     async def test_run_with_invalid_proposal(self):
-        sentiment_result = AgentResult(
-            output=SentimentReport(
-                sentiment_score=72, key_events=[], sources=["test"], confidence=0.8
-            ),
-            degraded=False,
-            llm_calls=[make_llm_call()],
-        )
-        market_result = AgentResult(
-            output=MarketInterpretation(
-                trend=Trend.UP,
-                volatility_regime=VolatilityRegime.MEDIUM,
-                key_levels=[],
-                risk_flags=[],
-            ),
-            degraded=False,
-            llm_calls=[make_llm_call()],
-        )
         # Proposal with SL on wrong side
-        proposal_result = AgentResult(
-            output=TradeProposal(
-                symbol="BTC/USDT:USDT",
-                side=Side.LONG,
-                entry=EntryOrder(type="market"),
-                position_size_risk_pct=1.5,
-                stop_loss=97000.0,  # above price = invalid for long
-                take_profit=[TakeProfit(price=99000.0, close_pct=100)],
-                time_horizon="4h",
-                confidence=0.75,
-                invalid_if=[],
-                rationale="Bad proposal",
-            ),
-            degraded=False,
-            llm_calls=[make_llm_call()],
+        bad_proposal = TradeProposal(
+            symbol="BTC/USDT:USDT", side=Side.LONG,
+            entry=EntryOrder(type="market"),
+            position_size_risk_pct=1.5, stop_loss=97000.0,  # above price = invalid
+            take_profit=[TakeProfit(price=99000.0, close_pct=100)],
+            time_horizon="4h", confidence=0.75,
+            invalid_if=[], rationale="Bad proposal",
         )
 
-        mock_sentiment = AsyncMock()
-        mock_sentiment.analyze.return_value = sentiment_result
-        mock_market = AsyncMock()
-        mock_market.analyze.return_value = market_result
-        mock_proposer = AsyncMock()
-        mock_proposer.analyze.return_value = proposal_result
-        mock_fetcher = AsyncMock()
-        mock_fetcher.fetch_snapshot.return_value = make_snapshot()
-        mock_repo = MagicMock()
-        mock_repo.create_run.return_value = MagicMock(run_id="test-run")
-
-        runner = PipelineRunner(
-            data_fetcher=mock_fetcher,
-            sentiment_agent=mock_sentiment,
-            market_agent=mock_market,
-            proposer_agent=mock_proposer,
-            pipeline_repo=mock_repo,
-            llm_call_repo=MagicMock(),
-            proposal_repo=MagicMock(),
-        )
+        runner, _ = _make_runner(proposal_output=bad_proposal)
 
         result = await runner.execute("BTC/USDT:USDT")
 
@@ -195,66 +219,14 @@ class TestPipelineRunner:
 
     @pytest.mark.asyncio
     async def test_run_with_model_override(self):
-        sentiment_result = AgentResult(
-            output=SentimentReport(
-                sentiment_score=50, key_events=[], sources=[], confidence=0.5
-            ),
-            degraded=False,
-            llm_calls=[make_llm_call()],
-        )
-        market_result = AgentResult(
-            output=MarketInterpretation(
-                trend=Trend.RANGE,
-                volatility_regime=VolatilityRegime.LOW,
-                key_levels=[],
-                risk_flags=[],
-            ),
-            degraded=False,
-            llm_calls=[make_llm_call()],
-        )
-        proposal_result = AgentResult(
-            output=TradeProposal(
-                symbol="BTC/USDT:USDT",
-                side=Side.FLAT,
-                entry=EntryOrder(type="market"),
-                position_size_risk_pct=0,
-                stop_loss=None,
-                take_profit=[],
-                time_horizon="4h",
-                confidence=0.5,
-                invalid_if=[],
-                rationale="No signal",
-            ),
-            degraded=False,
-            llm_calls=[make_llm_call()],
-        )
-
-        mock_sentiment = AsyncMock()
-        mock_sentiment.analyze.return_value = sentiment_result
-        mock_market = AsyncMock()
-        mock_market.analyze.return_value = market_result
-        mock_proposer = AsyncMock()
-        mock_proposer.analyze.return_value = proposal_result
-        mock_fetcher = AsyncMock()
-        mock_fetcher.fetch_snapshot.return_value = make_snapshot()
-        mock_repo = MagicMock()
-        mock_repo.create_run.return_value = MagicMock(run_id="test-run")
-
-        runner = PipelineRunner(
-            data_fetcher=mock_fetcher,
-            sentiment_agent=mock_sentiment,
-            market_agent=mock_market,
-            proposer_agent=mock_proposer,
-            pipeline_repo=mock_repo,
-            llm_call_repo=MagicMock(),
-            proposal_repo=MagicMock(),
-        )
+        runner, mocks = _make_runner()
 
         await runner.execute("BTC/USDT:USDT", model_override="anthropic/claude-opus-4-6")
 
         # Verify model_override was passed to all agents
-        for mock_agent in [mock_sentiment, mock_market, mock_proposer]:
-            call_kwargs = mock_agent.analyze.call_args[1]
+        for key in ["technical_short_agent", "technical_long_agent", "positioning_agent",
+                     "catalyst_agent", "correlation_agent", "proposer_agent"]:
+            call_kwargs = mocks[key].analyze.call_args[1]
             assert call_kwargs["model_override"] == "anthropic/claude-opus-4-6"
 
 
@@ -264,31 +236,10 @@ class TestPipelineRunnerWithRisk:
     @pytest.mark.asyncio
     async def test_approved_proposal_opens_position(self):
         """When risk check passes, paper engine opens a position."""
-        data_fetcher = AsyncMock()
-        data_fetcher.fetch_snapshot.return_value = MagicMock(
-            symbol="BTC/USDT:USDT",
-            current_price=95000.0,
-        )
-
-        sentiment_agent = AsyncMock()
-        sentiment_agent.analyze.return_value = MagicMock(
-            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
-        )
-        market_agent = AsyncMock()
-        market_agent.analyze.return_value = MagicMock(
-            output=_make_market(), degraded=False, llm_calls=[], messages=[],
-        )
-        proposer_agent = AsyncMock()
-        proposer_agent.analyze.return_value = MagicMock(
-            output=_make_proposal(side=Side.LONG, risk_pct=1.0),
-            degraded=False, llm_calls=[], messages=[],
-        )
-
         risk_checker = MagicMock()
         risk_checker.check.return_value = RiskResult(approved=True)
 
         paper_engine = MagicMock()
-
         paper_engine.open_positions_risk_pct = 0.0
         paper_engine.paused = False
         paper_engine.equity = 10000.0
@@ -296,14 +247,9 @@ class TestPipelineRunnerWithRisk:
         paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
         paper_engine._trade_repo.count_consecutive_losses.return_value = 0
 
-        runner = PipelineRunner(
-            data_fetcher=data_fetcher,
-            sentiment_agent=sentiment_agent,
-            market_agent=market_agent,
-            proposer_agent=proposer_agent,
-            pipeline_repo=MagicMock(),
-            llm_call_repo=MagicMock(),
-            proposal_repo=MagicMock(),
+        snapshot = MagicMock(symbol="BTC/USDT:USDT", current_price=95000.0)
+        runner, _ = _make_runner(
+            snapshot=snapshot,
             risk_checker=risk_checker,
             paper_engine=paper_engine,
         )
@@ -314,26 +260,6 @@ class TestPipelineRunnerWithRisk:
 
     @pytest.mark.asyncio
     async def test_risk_rejected_does_not_open_position(self):
-        data_fetcher = AsyncMock()
-        data_fetcher.fetch_snapshot.return_value = MagicMock(
-            symbol="BTC/USDT:USDT",
-            current_price=95000.0,
-        )
-
-        sentiment_agent = AsyncMock()
-        sentiment_agent.analyze.return_value = MagicMock(
-            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
-        )
-        market_agent = AsyncMock()
-        market_agent.analyze.return_value = MagicMock(
-            output=_make_market(), degraded=False, llm_calls=[], messages=[],
-        )
-        proposer_agent = AsyncMock()
-        proposer_agent.analyze.return_value = MagicMock(
-            output=_make_proposal(side=Side.LONG, risk_pct=3.0),
-            degraded=False, llm_calls=[], messages=[],
-        )
-
         risk_checker = MagicMock()
         risk_checker.check.return_value = RiskResult(
             approved=False, rule_violated="max_single_risk",
@@ -341,21 +267,16 @@ class TestPipelineRunnerWithRisk:
         )
 
         paper_engine = MagicMock()
-
         paper_engine.open_positions_risk_pct = 0.0
         paper_engine.paused = False
         paper_engine.equity = 10000.0
         paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
         paper_engine._trade_repo.count_consecutive_losses.return_value = 0
 
-        runner = PipelineRunner(
-            data_fetcher=data_fetcher,
-            sentiment_agent=sentiment_agent,
-            market_agent=market_agent,
-            proposer_agent=proposer_agent,
-            pipeline_repo=MagicMock(),
-            llm_call_repo=MagicMock(),
-            proposal_repo=MagicMock(),
+        snapshot = MagicMock(symbol="BTC/USDT:USDT", current_price=95000.0)
+        runner, _ = _make_runner(
+            snapshot=snapshot,
+            proposal_output=_make_proposal(side=Side.LONG, risk_pct=3.0),
             risk_checker=risk_checker,
             paper_engine=paper_engine,
         )
@@ -370,26 +291,6 @@ class TestPipelineRunnerApproval:
 
     @pytest.mark.asyncio
     async def test_approval_required_returns_pending(self):
-        """When approval_manager is set, risk-approved proposals get pending_approval status."""
-        data_fetcher = AsyncMock()
-        data_fetcher.fetch_snapshot.return_value = MagicMock(
-            symbol="BTC/USDT:USDT",
-            current_price=95000.0,
-        )
-
-        sentiment_agent = AsyncMock()
-        sentiment_agent.analyze.return_value = MagicMock(
-            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
-        )
-        market_agent = AsyncMock()
-        market_agent.analyze.return_value = MagicMock(
-            output=_make_market(), degraded=False, llm_calls=[], messages=[],
-        )
-        proposer_agent = AsyncMock()
-        proposer_agent.analyze.return_value = MagicMock(
-            output=_make_proposal(side=Side.LONG, risk_pct=1.0),
-            degraded=False, llm_calls=[], messages=[],
-        )
         risk_checker = MagicMock()
         risk_checker.check.return_value = RiskResult(approved=True)
 
@@ -402,18 +303,12 @@ class TestPipelineRunnerApproval:
 
         approval_manager = MagicMock()
         approval_manager.create.return_value = MagicMock(
-            approval_id="a-001",
-            snapshot_price=95000.0,
+            approval_id="a-001", snapshot_price=95000.0,
         )
 
-        runner = PipelineRunner(
-            data_fetcher=data_fetcher,
-            sentiment_agent=sentiment_agent,
-            market_agent=market_agent,
-            proposer_agent=proposer_agent,
-            pipeline_repo=MagicMock(),
-            llm_call_repo=MagicMock(),
-            proposal_repo=MagicMock(),
+        snapshot = MagicMock(symbol="BTC/USDT:USDT", current_price=95000.0)
+        runner, _ = _make_runner(
+            snapshot=snapshot,
             risk_checker=risk_checker,
             paper_engine=paper_engine,
             approval_manager=approval_manager,
@@ -427,25 +322,6 @@ class TestPipelineRunnerApproval:
 
     @pytest.mark.asyncio
     async def test_no_approval_manager_auto_executes(self):
-        """Without approval_manager, should auto-execute as before."""
-        data_fetcher = AsyncMock()
-        data_fetcher.fetch_snapshot.return_value = MagicMock(
-            symbol="BTC/USDT:USDT",
-            current_price=95000.0,
-        )
-        sentiment_agent = AsyncMock()
-        sentiment_agent.analyze.return_value = MagicMock(
-            output=_make_sentiment(), degraded=False, llm_calls=[], messages=[],
-        )
-        market_agent = AsyncMock()
-        market_agent.analyze.return_value = MagicMock(
-            output=_make_market(), degraded=False, llm_calls=[], messages=[],
-        )
-        proposer_agent = AsyncMock()
-        proposer_agent.analyze.return_value = MagicMock(
-            output=_make_proposal(side=Side.LONG, risk_pct=1.0),
-            degraded=False, llm_calls=[], messages=[],
-        )
         risk_checker = MagicMock()
         risk_checker.check.return_value = RiskResult(approved=True)
 
@@ -456,14 +332,9 @@ class TestPipelineRunnerApproval:
         paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
         paper_engine._trade_repo.count_consecutive_losses.return_value = 0
 
-        runner = PipelineRunner(
-            data_fetcher=data_fetcher,
-            sentiment_agent=sentiment_agent,
-            market_agent=market_agent,
-            proposer_agent=proposer_agent,
-            pipeline_repo=MagicMock(),
-            llm_call_repo=MagicMock(),
-            proposal_repo=MagicMock(),
+        snapshot = MagicMock(symbol="BTC/USDT:USDT", current_price=95000.0)
+        runner, _ = _make_runner(
+            snapshot=snapshot,
             risk_checker=risk_checker,
             paper_engine=paper_engine,
         )
@@ -477,15 +348,7 @@ class TestSaveLLMCalls:
     def test_saves_full_messages_json(self):
         """_save_llm_calls should store full messages, not placeholder."""
         llm_call_repo = MagicMock()
-        runner = PipelineRunner(
-            data_fetcher=MagicMock(),
-            sentiment_agent=MagicMock(),
-            market_agent=MagicMock(),
-            proposer_agent=MagicMock(),
-            pipeline_repo=MagicMock(),
-            llm_call_repo=llm_call_repo,
-            proposal_repo=MagicMock(),
-        )
+        runner, _ = _make_runner(llm_call_repo=llm_call_repo)
         mock_result = MagicMock()
         mock_result.llm_calls = [MagicMock(
             content='{"test": true}', model="test", latency_ms=100,
@@ -493,7 +356,7 @@ class TestSaveLLMCalls:
         )]
         mock_result.messages = [{"role": "user", "content": "analyze"}]
 
-        runner._save_llm_calls("run-1", "sentiment", mock_result)
+        runner._save_llm_calls("run-1", "technical_short", mock_result)
 
         call_kwargs = llm_call_repo.save_call.call_args[1]
         assert call_kwargs["prompt"] != "(see messages)"
