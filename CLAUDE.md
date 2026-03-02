@@ -34,8 +34,10 @@ Git worktrees are stored in `.worktrees/` at the project root.
 ## Trading Skills
 
 When running pipeline analysis via `claude -p`, the following skills are available:
-- sentiment: `.claude/skills/sentiment/SKILL.md` — market sentiment analysis
-- market: `.claude/skills/market/SKILL.md` — technical analysis
+- technical: `.claude/skills/technical/SKILL.md` — short/long-term technical analysis
+- positioning: `.claude/skills/positioning/SKILL.md` — futures positioning & order flow
+- catalyst: `.claude/skills/catalyst/SKILL.md` — event & news catalyst analysis
+- correlation: `.claude/skills/correlation/SKILL.md` — cross-market correlation (DXY, S&P, BTC.D)
 - proposer: `.claude/skills/proposer/SKILL.md` — trade proposal generation
 
 Each skill file contains the full analysis methodology, decision criteria, and output schema.
