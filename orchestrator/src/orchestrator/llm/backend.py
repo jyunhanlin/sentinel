@@ -166,7 +166,9 @@ class ClaudeCLIBackend(LLMBackend):
             )
         except TimeoutError:
             process.kill()
-            raise
+            raise TimeoutError(
+                f"Claude CLI timed out after {self._timeout}s"
+            )
 
         if process.returncode != 0:
             error_msg = stderr.decode().strip()

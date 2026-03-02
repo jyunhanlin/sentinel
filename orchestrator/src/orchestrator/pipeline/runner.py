@@ -312,7 +312,12 @@ class PipelineRunner:
             )
 
         except Exception as e:
-            logger.error("pipeline_failed", error=str(e))
+            logger.error(
+                "pipeline_failed",
+                error=str(e) or "(no message)",
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
             self._pipeline_repo.update_run_status(run_id, "failed")
             return PipelineResult(
                 run_id=run_id,
