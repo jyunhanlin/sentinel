@@ -1,6 +1,6 @@
 # Configuration Codemap
 
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-02
 
 ## Overview
 
@@ -60,7 +60,7 @@ llm_max_retries: int = 1  # Agent validation retries
 ```python
 llm_backend: str = "cli"  # "api" | "cli"
 claude_cli_path: str = "claude"  # Path to claude binary
-claude_cli_timeout: int = 120  # Seconds
+claude_cli_timeout: int = 300  # Seconds
 ```
 
 #### Logging
@@ -229,7 +229,7 @@ LLM_MAX_TOKENS=2000
 # LLM Backend
 LLM_BACKEND=cli
 CLAUDE_CLI_PATH=claude
-CLAUDE_CLI_TIMEOUT=120
+CLAUDE_CLI_TIMEOUT=300
 
 # Database
 DATABASE_URL=sqlite:///data/sentinel.db
@@ -295,7 +295,7 @@ Uses `claude` command-line tool:
 ```bash
 LLM_BACKEND=cli
 CLAUDE_CLI_PATH=claude
-CLAUDE_CLI_TIMEOUT=120
+CLAUDE_CLI_TIMEOUT=300
 ```
 
 Requires:
@@ -309,7 +309,7 @@ Pros:
 
 Cons:
 - Requires CLI installation
-- Timeout at 120 seconds
+- Timeout at 300 seconds (configurable)
 
 Switching:
 
