@@ -23,12 +23,22 @@ class AgentResult[T: BaseModel](BaseModel):
 class BaseAgent[T: BaseModel](ABC):
     output_model: type[T]
     _skill_name: str = ""
+    _label: str = ""
 
     def __init__(self, client: LLMClient, max_retries: int = 1) -> None:
         self._client = client
         self._max_retries = max_retries
 
+    @property
+    def _log_id(self) -> dict[str, str]:
+        """Common log fields identifying this agent instance."""
+        fields: dict[str, str] = {"agent": self.__class__.__name__}
+        if self._label:
+            fields["label"] = self._label
+        return fields
+
     async def analyze(self, *, model_override: str | None = None, **kwargs) -> AgentResult[T]:
+        logger.info("agent_start", **self._log_id)
         messages = self._build_messages(**kwargs)
         llm_calls: list[LLMCallResult] = []
 
@@ -41,7 +51,7 @@ class BaseAgent[T: BaseModel](ABC):
             if isinstance(validation, ValidationSuccess):
                 logger.info(
                     "agent_success",
-                    agent=self.__class__.__name__,
+                    **self._log_id,
                     attempt=attempt + 1,
                 )
                 return AgentResult(
@@ -54,7 +64,7 @@ class BaseAgent[T: BaseModel](ABC):
             # Retry with error feedback
             logger.warning(
                 "agent_validation_failed",
-                agent=self.__class__.__name__,
+                **self._log_id,
                 attempt=attempt + 1,
                 error=validation.error_message,
             )
@@ -65,7 +75,7 @@ class BaseAgent[T: BaseModel](ABC):
         # All retries exhausted — degrade
         logger.warning(
             "agent_degraded",
-            agent=self.__class__.__name__,
+            **self._log_id,
             total_attempts=1 + self._max_retries,
         )
         return AgentResult(

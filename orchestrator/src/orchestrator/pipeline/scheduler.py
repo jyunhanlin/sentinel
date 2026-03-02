@@ -71,10 +71,8 @@ class PipelineScheduler:
                     logger.exception("on_result_callback_failed", symbol=symbol)
             return result
 
-        results: list[PipelineResult] = []
-        for s in target_symbols:
-            results.append(await _run_symbol(s))
-        return results
+        results = await asyncio.gather(*[_run_symbol(s) for s in target_symbols])
+        return list(results)
 
     async def _run_daily_premium(self) -> None:
         """Daily deep analysis using premium model (Opus)."""
