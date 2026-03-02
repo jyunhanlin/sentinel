@@ -8,14 +8,17 @@ from typing import Any
 import structlog
 from sqlmodel import Session
 
-from orchestrator.agents.market import MarketAgent
+from orchestrator.agents.catalyst import CatalystAgent
+from orchestrator.agents.correlation import CorrelationAgent
+from orchestrator.agents.positioning import PositioningAgent
 from orchestrator.agents.proposer import ProposerAgent
-from orchestrator.agents.sentiment import SentimentAgent
+from orchestrator.agents.technical import TechnicalAgent
 from orchestrator.approval.manager import ApprovalManager
 from orchestrator.config import Settings
 from orchestrator.eval.runner import EvalRunner
 from orchestrator.exchange.client import ExchangeClient
 from orchestrator.exchange.data_fetcher import DataFetcher
+from orchestrator.exchange.external_data import ExternalDataFetcher
 from orchestrator.exchange.paper_engine import PaperEngine
 from orchestrator.execution.executor import LiveExecutor, PaperExecutor
 from orchestrator.llm.backend import ClaudeCLIBackend, LiteLLMBackend
@@ -102,13 +105,23 @@ def create_app_components(
     )
 
     # Agents
-    sentiment_agent = SentimentAgent(client=llm_client, max_retries=llm_max_retries)
-    market_agent = MarketAgent(client=llm_client, max_retries=llm_max_retries)
+    technical_short = TechnicalAgent(
+        client=llm_client, label="short_term", candle_count=50,
+        max_retries=llm_max_retries,
+    )
+    technical_long = TechnicalAgent(
+        client=llm_client, label="long_term", candle_count=30,
+        max_retries=llm_max_retries,
+    )
+    positioning_agent = PositioningAgent(client=llm_client, max_retries=llm_max_retries)
+    catalyst_agent = CatalystAgent(client=llm_client, max_retries=llm_max_retries)
+    correlation_agent = CorrelationAgent(client=llm_client, max_retries=llm_max_retries)
     proposer_agent = ProposerAgent(client=llm_client, max_retries=llm_max_retries)
 
-    # Exchange
+    # Exchange & External Data
     exchange_client = ExchangeClient(exchange_id=exchange_id)
     data_fetcher = DataFetcher(exchange_client)
+    external_data_fetcher = ExternalDataFetcher()
 
     # Repositories
     pipeline_repo = PipelineRepository(session)
@@ -173,9 +186,13 @@ def create_app_components(
     # Pipeline
     runner = PipelineRunner(
         data_fetcher=data_fetcher,
-        sentiment_agent=sentiment_agent,
-        market_agent=market_agent,
+        technical_short_agent=technical_short,
+        technical_long_agent=technical_long,
+        positioning_agent=positioning_agent,
+        catalyst_agent=catalyst_agent,
+        correlation_agent=correlation_agent,
         proposer_agent=proposer_agent,
+        external_data_fetcher=external_data_fetcher,
         pipeline_repo=pipeline_repo,
         llm_call_repo=llm_call_repo,
         proposal_repo=proposal_repo,
@@ -197,8 +214,11 @@ def create_app_components(
 
     # Eval
     eval_runner = EvalRunner(
-        sentiment_agent=sentiment_agent,
-        market_agent=market_agent,
+        technical_short_agent=technical_short,
+        technical_long_agent=technical_long,
+        positioning_agent=positioning_agent,
+        catalyst_agent=catalyst_agent,
+        correlation_agent=correlation_agent,
         proposer_agent=proposer_agent,
     )
 
