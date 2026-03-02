@@ -67,7 +67,7 @@ All config via environment variables or `.env` file at the repo root.
 | `LLM_BACKEND`               | `cli`                         | LLM backend: `api` (LiteLLM) or `cli` (Claude CLI)   |
 | `LLM_MODEL`                 | `anthropic/claude-sonnet-4-6` | Default LLM model                                     |
 | `LLM_MODEL_PREMIUM`         | `anthropic/claude-opus-4-6`   | Premium model for `/run` override                     |
-| `CLAUDE_CLI_TIMEOUT`         | `300`                         | CLI subprocess timeout in seconds                     |
+| `CLAUDE_CLI_TIMEOUT`         | `600`                         | CLI subprocess timeout in seconds                     |
 | `DATABASE_URL`              | `sqlite:///data/sentinel.db`  | SQLite database path                                  |
 | `PIPELINE_INTERVAL_MINUTES` | `15`                          | Auto-run interval                                     |
 | `PIPELINE_SYMBOLS`          | `BTC/USDT:USDT,ETH/USDT:USDT` | Symbols to analyze                                    |
