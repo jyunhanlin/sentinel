@@ -56,5 +56,39 @@ class ExchangeClient:
     async def fetch_order(self, order_id: str, symbol: str) -> dict[str, Any]:
         return await self._exchange.fetch_order(order_id, symbol)
 
+    async def fetch_funding_rate_history(
+        self, symbol: str, *, limit: int = 30
+    ) -> list[float]:
+        """Fetch recent funding rate history via Binance API."""
+        rates = await self._exchange.fetch_funding_rate_history(symbol, limit=limit)
+        return [r.get("fundingRate", 0.0) for r in rates]
+
+    async def fetch_open_interest(self, symbol: str) -> float:
+        """Fetch current open interest."""
+        result = await self._exchange.fetch_open_interest(symbol)
+        return result.get("openInterestAmount", 0.0)
+
+    async def fetch_long_short_ratio(self, symbol: str) -> float:
+        """Fetch global long/short account ratio."""
+        result = await self._exchange.fetch_long_short_ratio_history(symbol, limit=1)
+        if result:
+            return result[0].get("longShortRatio", 1.0)
+        return 1.0
+
+    async def fetch_top_trader_long_short_ratio(self, symbol: str) -> float:
+        """Fetch top trader long/short ratio."""
+        result = await self._exchange.fetch_long_short_ratio_history(
+            symbol, limit=1, params={"traderType": "top"}
+        )
+        if result:
+            return result[0].get("longShortRatio", 1.0)
+        return 1.0
+
+    async def fetch_order_book(
+        self, symbol: str, *, limit: int = 20
+    ) -> dict[str, Any]:
+        """Fetch order book."""
+        return await self._exchange.fetch_order_book(symbol, limit=limit)
+
     async def close(self) -> None:
         await self._exchange.close()
