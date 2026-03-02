@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # LLM Backend
     llm_backend: str = "cli"                         # "api" | "cli"
     claude_cli_path: str = "claude"
-    claude_cli_timeout: int = 120                    # seconds
+    claude_cli_timeout: int = 300                    # seconds
 
     # Logging
     log_json: bool = False  # True for structured JSON, False for console

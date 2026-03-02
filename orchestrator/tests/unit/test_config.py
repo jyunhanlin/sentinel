@@ -53,7 +53,7 @@ def test_settings_llm_backend_defaults():
     )
     assert settings.llm_backend == "cli"
     assert settings.claude_cli_path == "claude"
-    assert settings.claude_cli_timeout == 120
+    assert settings.claude_cli_timeout == 300
 
 
 def test_settings_api_key_optional_for_cli():
