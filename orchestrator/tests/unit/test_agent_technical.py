@@ -5,7 +5,7 @@ import pytest
 from orchestrator.agents.technical import TechnicalAgent
 from orchestrator.exchange.data_fetcher import MarketSnapshot
 from orchestrator.llm.client import LLMCallResult, LLMClient
-from orchestrator.models import TechnicalAnalysis, Trend, Momentum
+from orchestrator.models import Momentum, TechnicalAnalysis, Trend
 
 
 def make_snapshot() -> MarketSnapshot:
@@ -82,10 +82,16 @@ class TestTechnicalAgent:
             input_tokens=200, output_tokens=100, latency_ms=1000,
         )
 
-        agent = TechnicalAgent(client=mock_client, label="long_term", candle_count=30)
-        result = await agent.analyze(
+        agent = TechnicalAgent(
+            client=mock_client, label="long_term", candle_count=30,
+        )
+        await agent.analyze(
             snapshot=make_snapshot(),
-            macro_data={"ma_200w": 42000.0, "bull_support_upper": 68000.0, "bull_support_lower": 65000.0},
+            macro_data={
+                "ma_200w": 42000.0,
+                "bull_support_upper": 68000.0,
+                "bull_support_lower": 65000.0,
+            },
         )
 
         prompt = mock_client.call.call_args[0][0][0]["content"]
@@ -100,7 +106,10 @@ class TestTechnicalAgent:
             input_tokens=100, output_tokens=50, latency_ms=500,
         )
 
-        agent = TechnicalAgent(client=mock_client, label="short_term", candle_count=50, max_retries=0)
+        agent = TechnicalAgent(
+            client=mock_client, label="short_term",
+            candle_count=50, max_retries=0,
+        )
         result = await agent.analyze(snapshot=make_snapshot())
 
         assert result.degraded is True

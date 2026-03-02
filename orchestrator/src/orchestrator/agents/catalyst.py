@@ -18,7 +18,10 @@ class CatalystAgent(BaseAgent[CatalystReport]):
 
         calendar_str = ""
         for entry in calendar:
-            calendar_str += f"- {entry.get('event', 'Unknown')} | {entry.get('time', 'TBD')} | Impact: {entry.get('impact', 'unknown')}\n"
+            evt = entry.get("event", "Unknown")
+            time = entry.get("time", "TBD")
+            impact = entry.get("impact", "unknown")
+            calendar_str += f"- {evt} | {time} | Impact: {impact}\n"
         if not calendar_str:
             calendar_str = "No upcoming events\n"
 

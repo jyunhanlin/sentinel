@@ -6,7 +6,6 @@ from orchestrator.agents.catalyst import CatalystAgent
 from orchestrator.llm.client import LLMCallResult, LLMClient
 from orchestrator.models import CatalystReport
 
-
 VALID_JSON = (
     '```json\n'
     '{"upcoming_events": [{"event": "FOMC Rate Decision", '

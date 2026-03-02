@@ -6,7 +6,6 @@ from orchestrator.agents.correlation import CorrelationAgent
 from orchestrator.llm.client import LLMCallResult, LLMClient
 from orchestrator.models import CorrelationAnalysis
 
-
 VALID_JSON = (
     '```json\n'
     '{"dxy_trend": "strengthening", "dxy_impact": "headwind", '
@@ -28,8 +27,14 @@ class TestCorrelationAgent:
         agent = CorrelationAgent(client=mock_client)
         await agent.analyze(
             symbol="BTC/USDT:USDT",
-            dxy_data={"current": 104.5, "change_pct": 0.3, "trend_5d": [103.8, 104.0, 104.2, 104.3, 104.5]},
-            sp500_data={"current": 5800.0, "change_pct": -1.2, "trend_5d": [5900, 5880, 5850, 5820, 5800]},
+            dxy_data={
+                "current": 104.5, "change_pct": 0.3,
+                "trend_5d": [103.8, 104.0, 104.2, 104.3, 104.5],
+            },
+            sp500_data={
+                "current": 5800.0, "change_pct": -1.2,
+                "trend_5d": [5900, 5880, 5850, 5820, 5800],
+            },
             btc_dominance={"current": 54.2, "change_7d": 1.5},
         )
 

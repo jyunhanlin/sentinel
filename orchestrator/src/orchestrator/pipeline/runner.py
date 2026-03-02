@@ -105,7 +105,8 @@ class PipelineRunner:
 
         try:
             # Step 1: Fetch all data in parallel
-            snapshot, positioning_data, macro_data, dxy_data, sp500_data, btc_dom, calendar, announcements = (
+            (snapshot, positioning_data, macro_data,
+             dxy_data, sp500_data, btc_dom, calendar, announcements) = (
                 await asyncio.gather(
                     self._data_fetcher.fetch_snapshot(symbol, timeframe=timeframe),
                     self._data_fetcher.fetch_positioning_data(symbol),
@@ -120,7 +121,8 @@ class PipelineRunner:
             logger.info("snapshot_fetched", price=snapshot.current_price)
 
             # Step 2: Run 5 analysis agents in parallel
-            tech_short_result, tech_long_result, positioning_result, catalyst_result, correlation_result = (
+            (tech_short_result, tech_long_result,
+             positioning_result, catalyst_result, correlation_result) = (
                 await asyncio.gather(
                     self._technical_short_agent.analyze(
                         snapshot=snapshot, model_override=model_override,

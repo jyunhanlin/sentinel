@@ -6,7 +6,6 @@ from orchestrator.agents.positioning import PositioningAgent
 from orchestrator.llm.client import LLMCallResult, LLMClient
 from orchestrator.models import PositioningAnalysis
 
-
 VALID_JSON = (
     '```json\n'
     '{"funding_trend": "rising", "funding_extreme": false, '

@@ -18,7 +18,9 @@ class TestExternalDataFetcher:
             mock_session = AsyncMock()
             mock_session.get.return_value.__aenter__ = AsyncMock(return_value=mock_response)
             mock_session.get.return_value.__aexit__ = AsyncMock(return_value=False)
-            mock_aiohttp.ClientSession.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_aiohttp.ClientSession.return_value.__aenter__ = AsyncMock(
+                return_value=mock_session,
+            )
             mock_aiohttp.ClientSession.return_value.__aexit__ = AsyncMock(return_value=False)
 
             result = await fetcher.fetch_dxy_data()

@@ -128,7 +128,7 @@ class TestPipelineRunnerV2:
     @pytest.mark.asyncio
     async def test_execute_calls_all_agents_in_parallel(self):
         runner, mocks = _make_runner()
-        result = await runner.execute("BTC/USDT:USDT", timeframe="4h")
+        await runner.execute("BTC/USDT:USDT", timeframe="4h")
 
         # Verify all agents were called
         mocks["technical_short_agent"].analyze.assert_called_once()

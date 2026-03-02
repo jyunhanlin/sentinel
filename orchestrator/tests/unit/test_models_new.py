@@ -1,11 +1,11 @@
 import pytest
+
 from orchestrator.models import (
-    Momentum,
-    TechnicalAnalysis,
-    PositioningAnalysis,
     CatalystEvent,
     CatalystReport,
     CorrelationAnalysis,
+    PositioningAnalysis,
+    TechnicalAnalysis,
 )
 
 

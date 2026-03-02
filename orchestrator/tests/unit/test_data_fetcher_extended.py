@@ -45,7 +45,10 @@ class TestDataFetcherExtended:
     async def test_fetch_macro_indicators(self):
         mock_client = AsyncMock(spec=ExchangeClient)
         mock_client.fetch_ohlcv.return_value = [
-            [i * 604800000, 40000 + i * 100, 41000 + i * 100, 39000 + i * 100, 40500 + i * 100, 1000]
+            [
+                i * 604800000, 40000 + i * 100, 41000 + i * 100,
+                39000 + i * 100, 40500 + i * 100, 1000,
+            ]
             for i in range(210)
         ]
 

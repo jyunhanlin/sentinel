@@ -15,7 +15,6 @@ from orchestrator.llm.client import LLMCallResult, LLMClient
 from orchestrator.models import Side
 from orchestrator.pipeline.runner import PipelineResult, PipelineRunner
 
-
 # -- LLM response fixtures --------------------------------------------------
 
 TECHNICAL_SHORT_RESPONSE = (
@@ -263,7 +262,6 @@ class TestFullPipelineIntegration:
     @pytest.mark.asyncio
     async def test_risk_checker_rejects_bad_proposal(self):
         """Risk checker blocks proposals that violate risk rules."""
-        from orchestrator.risk.checker import RiskChecker, RiskResult
 
         # Proposer returns a high-risk proposal
         high_risk_response = (

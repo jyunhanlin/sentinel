@@ -1,10 +1,9 @@
 import pytest
 
-from orchestrator.eval.dataset import ExpectedMarket, ExpectedProposal, ExpectedRange
+from orchestrator.eval.dataset import ExpectedMarket, ExpectedProposal
 from orchestrator.eval.scorers import RuleScorer, ScoreResult
 from orchestrator.models import (
     EntryOrder,
-    KeyLevel,
     Momentum,
     Side,
     TakeProfit,
