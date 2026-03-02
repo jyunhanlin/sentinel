@@ -3,60 +3,10 @@ from pydantic import ValidationError
 
 from orchestrator.models import (
     EntryOrder,
-    KeyEvent,
-    KeyLevel,
-    MarketInterpretation,
-    SentimentReport,
     Side,
     TakeProfit,
     TradeProposal,
-    Trend,
-    VolatilityRegime,
 )
-
-
-class TestSentimentReport:
-    def test_valid_report(self):
-        report = SentimentReport(
-            sentiment_score=72,
-            key_events=[
-                KeyEvent(event="BTC ETF inflows", impact="positive", source="Bloomberg")
-            ],
-            sources=["twitter", "news"],
-            confidence=0.8,
-        )
-        assert report.sentiment_score == 72
-        assert len(report.key_events) == 1
-
-    def test_score_out_of_range(self):
-        with pytest.raises(ValidationError):
-            SentimentReport(
-                sentiment_score=101,
-                key_events=[],
-                sources=[],
-                confidence=0.5,
-            )
-
-    def test_confidence_out_of_range(self):
-        with pytest.raises(ValidationError):
-            SentimentReport(
-                sentiment_score=50,
-                key_events=[],
-                sources=[],
-                confidence=1.5,
-            )
-
-
-class TestMarketInterpretation:
-    def test_valid_interpretation(self):
-        interp = MarketInterpretation(
-            trend=Trend.UP,
-            volatility_regime=VolatilityRegime.MEDIUM,
-            key_levels=[KeyLevel(type="support", price=93000.0)],
-            risk_flags=["funding_elevated"],
-        )
-        assert interp.trend == Trend.UP
-        assert len(interp.key_levels) == 1
 
 
 class TestTradeProposal:
@@ -121,18 +71,6 @@ class TestTakeProfit:
             TakeProfit(price=65800.0, close_pct=0)
         with pytest.raises(ValidationError):
             TakeProfit(price=65800.0, close_pct=101)
-
-
-class TestMarketInterpretationVolatility:
-    def test_volatility_pct_field(self):
-        interp = MarketInterpretation(
-            trend=Trend.UP,
-            volatility_regime=VolatilityRegime.MEDIUM,
-            volatility_pct=2.3,
-            key_levels=[],
-            risk_flags=[],
-        )
-        assert interp.volatility_pct == 2.3
 
 
 class TestTradeProposalLeverage:

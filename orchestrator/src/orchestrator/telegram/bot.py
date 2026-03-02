@@ -245,8 +245,7 @@ class SentinelBot:
                 if approval:
                     await self.push_pending_approval(
                         chat_id, approval,
-                        sentiment=result.sentiment,
-                        market=result.market,
+                        technical_short=result.technical_short,
                     )
                     continue
             await self.push_proposal(chat_id, result)
@@ -660,13 +659,12 @@ class SentinelBot:
         chat_id: int,
         approval: PendingApproval,
         *,
-        sentiment: Any | None = None,
-        market: Any | None = None,
+        technical_short: Any | None = None,
     ) -> int | None:
         """Push proposal with Approve/Reject + Translate keyboard. Returns message_id."""
         if self._app is None:
             return None
-        text = format_pending_approval(approval, sentiment=sentiment, market=market)
+        text = format_pending_approval(approval, technical_short=technical_short)
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(

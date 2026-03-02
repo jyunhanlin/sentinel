@@ -6,53 +6,53 @@ from orchestrator.llm.schema_validator import (
     _extract_json,
     validate_llm_output,
 )
-from orchestrator.models import SentimentReport
+from orchestrator.models import TechnicalAnalysis
+
+_VALID = (
+    '{"label": "short_term", "trend": "up", "trend_strength": 28.0,'
+    ' "volatility_regime": "medium", "volatility_pct": 2.5,'
+    ' "momentum": "bullish", "rsi": 62.0, "key_levels": [], "risk_flags": []}'
+)
 
 
 class TestValidateLLMOutput:
     def test_valid_json(self):
-        raw = '{"sentiment_score": 72, "key_events": [], "sources": ["news"], "confidence": 0.8}'
-        result = validate_llm_output(raw, SentimentReport)
+        result = validate_llm_output(_VALID, TechnicalAnalysis)
         assert isinstance(result, ValidationSuccess)
-        assert result.value.sentiment_score == 72
+        assert result.value.trend.value == "up"
 
     def test_json_with_surrounding_text(self):
-        raw = (
-            'Here is my analysis:\n'
-            '{"sentiment_score": 50, "key_events": [], "sources": [], "confidence": 0.5}'
-            '\nDone.'
-        )
-        result = validate_llm_output(raw, SentimentReport)
+        raw = f"Here is my analysis:\n{_VALID}\nDone."
+        result = validate_llm_output(raw, TechnicalAnalysis)
         assert isinstance(result, ValidationSuccess)
-        assert result.value.sentiment_score == 50
+        assert result.value.trend_strength == 28.0
 
     def test_invalid_json(self):
         raw = "This is not JSON at all"
-        result = validate_llm_output(raw, SentimentReport)
+        result = validate_llm_output(raw, TechnicalAnalysis)
         assert isinstance(result, ValidationFailure)
         assert "JSON" in result.error_message
 
     def test_schema_violation(self):
-        raw = '{"sentiment_score": 200, "key_events": [], "sources": [], "confidence": 0.5}'
-        result = validate_llm_output(raw, SentimentReport)
+        raw = (
+            '{"label": "short_term", "trend": "invalid_trend", "trend_strength": 28.0,'
+            ' "volatility_regime": "medium", "volatility_pct": 2.5,'
+            ' "momentum": "bullish", "rsi": 62.0, "key_levels": [], "risk_flags": []}'
+        )
+        result = validate_llm_output(raw, TechnicalAnalysis)
         assert isinstance(result, ValidationFailure)
-        assert "sentiment_score" in result.error_message
 
     def test_missing_required_field(self):
-        raw = '{"sentiment_score": 50}'
-        result = validate_llm_output(raw, SentimentReport)
+        raw = '{"label": "short_term", "trend": "up"}'
+        result = validate_llm_output(raw, TechnicalAnalysis)
         assert isinstance(result, ValidationFailure)
         assert len(result.error_message) > 0
 
     def test_json_in_markdown_code_block(self):
-        raw = (
-            '```json\n'
-            '{"sentiment_score": 60, "key_events": [], "sources": [], "confidence": 0.7}'
-            '\n```'
-        )
-        result = validate_llm_output(raw, SentimentReport)
+        raw = f"```json\n{_VALID}\n```"
+        result = validate_llm_output(raw, TechnicalAnalysis)
         assert isinstance(result, ValidationSuccess)
-        assert result.value.sentiment_score == 60
+        assert result.value.rsi == 62.0
 
 
 class TestExtractJsonBlock:

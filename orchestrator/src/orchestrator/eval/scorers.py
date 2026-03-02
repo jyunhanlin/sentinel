@@ -6,7 +6,6 @@ from orchestrator.eval.dataset import (
     ExpectedMarket,
     ExpectedProposal,
     ExpectedRange,
-    ExpectedSentiment,
 )
 from orchestrator.models import TechnicalAnalysis, TradeProposal
 

@@ -27,10 +27,16 @@ def _truncate(text: str, max_len: int) -> str:
 
 def _degraded_labels(result: PipelineResult) -> list[str]:
     labels: list[str] = []
-    if result.sentiment_degraded:
-        labels.append("sentiment")
-    if result.market_degraded:
-        labels.append("market")
+    if result.technical_short_degraded:
+        labels.append("technical_short")
+    if result.technical_long_degraded:
+        labels.append("technical_long")
+    if result.positioning_degraded:
+        labels.append("positioning")
+    if result.catalyst_degraded:
+        labels.append("catalyst")
+    if result.correlation_degraded:
+        labels.append("correlation")
     if result.proposer_degraded:
         labels.append("proposer")
     return labels
@@ -162,8 +168,7 @@ def format_proposal(result: PipelineResult) -> str:
 def format_pending_approval(
     approval: PendingApproval,
     *,
-    sentiment: Any | None = None,
-    market: Any | None = None,
+    technical_short: Any | None = None,
 ) -> str:
     """Format a PendingApproval with detailed analysis report."""
     p = approval.proposal
@@ -194,8 +199,8 @@ def format_pending_approval(
     # Trade parameters
     lines.append("")
     lines.append(f"Leverage: {p.suggested_leverage}x")
-    if market and hasattr(market, "volatility_pct"):
-        lines.append(f"Volatility: {market.volatility_pct:.1f}%")
+    if technical_short and hasattr(technical_short, "volatility_pct"):
+        lines.append(f"Volatility: {technical_short.volatility_pct:.1f}%")
     if p.stop_loss is not None and p.take_profit:
         risk_dist = abs(entry_price - p.stop_loss)
         reward_dist = abs(p.take_profit[-1].price - entry_price)
@@ -205,25 +210,25 @@ def format_pending_approval(
     lines.append(f"Risk: {p.position_size_risk_pct}%")
     lines.append(f"Time Horizon: {p.time_horizon}")
 
-    # Market section
-    if market:
+    # Technical analysis section
+    if technical_short:
         trend_str = (
-            market.trend.value.upper()
-            if hasattr(market.trend, "value")
-            else str(market.trend).upper()
+            technical_short.trend.value.upper()
+            if hasattr(technical_short.trend, "value")
+            else str(technical_short.trend).upper()
         )
         vol_regime = (
-            market.volatility_regime.value.upper()
-            if hasattr(market.volatility_regime, "value")
-            else str(market.volatility_regime).upper()
+            technical_short.volatility_regime.value.upper()
+            if hasattr(technical_short.volatility_regime, "value")
+            else str(technical_short.volatility_regime).upper()
         )
         lines.append(f"\n\U0001f4ca Trend: {trend_str} | Volatility: {vol_regime}")
 
         supports = [
-            kl for kl in market.key_levels if kl.type == "support"
+            kl for kl in technical_short.key_levels if kl.type == "support"
         ]
         resists = [
-            kl for kl in market.key_levels if kl.type == "resistance"
+            kl for kl in technical_short.key_levels if kl.type == "resistance"
         ]
         if supports:
             s_str = " / ".join(f"{kl.price:,.0f}" for kl in supports)
@@ -232,25 +237,12 @@ def format_pending_approval(
             r_str = " / ".join(f"{kl.price:,.0f}" for kl in resists)
             lines.append(f"Resistance: {r_str}")
 
-        if market.risk_flags:
+        if technical_short.risk_flags:
             lines.append("")
             lines.append("\u26a0\ufe0f Warnings:")
-            for flag in market.risk_flags:
+            for flag in technical_short.risk_flags:
                 label = flag.replace("_", " ").title()
                 lines.append(f"\u2022 {label}")
-
-    # Sentiment section
-    if sentiment:
-        score = sentiment.sentiment_score
-        label = (
-            "Bullish" if score > 60
-            else "Bearish" if score < 40
-            else "Neutral"
-        )
-        line = f"\n\U0001f5e3 Sentiment: {score}/100 ({label})"
-        if sentiment.key_events:
-            line += f"\n{sentiment.key_events[0].event}"
-        lines.append(line)
 
     lines.append(f"\n{p.rationale}")
 

@@ -15,9 +15,7 @@ from orchestrator.exchange.paper_engine import CloseResult
 from orchestrator.models import (
     CatalystReport,
     CorrelationAnalysis,
-    MarketInterpretation,
     PositioningAnalysis,
-    SentimentReport,
     Side,
     TechnicalAnalysis,
     TradeProposal,
@@ -47,11 +45,7 @@ class PipelineResult(BaseModel, frozen=True):
     proposal: TradeProposal | None = None
     rejection_reason: str = ""
     approval_id: str | None = None
-    # Legacy degradation flags (kept for backward compat)
-    sentiment_degraded: bool = False
-    market_degraded: bool = False
     proposer_degraded: bool = False
-    # New agent degradation flags
     technical_short_degraded: bool = False
     technical_long_degraded: bool = False
     positioning_degraded: bool = False
@@ -59,10 +53,6 @@ class PipelineResult(BaseModel, frozen=True):
     correlation_degraded: bool = False
     risk_result: RiskResult | None = None
     close_results: list[CloseResult] = []
-    # Legacy analysis outputs (kept for backward compat)
-    sentiment: SentimentReport | None = None
-    market: MarketInterpretation | None = None
-    # New analysis outputs
     technical_short: TechnicalAnalysis | None = None
     technical_long: TechnicalAnalysis | None = None
     positioning: PositioningAnalysis | None = None

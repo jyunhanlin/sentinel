@@ -32,23 +32,7 @@ class Momentum(StrEnum):
     NEUTRAL = "neutral"
 
 
-# --- Sentiment ---
-
-
-class KeyEvent(BaseModel, frozen=True):
-    event: str
-    impact: str
-    source: str = ""
-
-
-class SentimentReport(BaseModel, frozen=True):
-    sentiment_score: int = Field(ge=0, le=100)
-    key_events: list[KeyEvent] = Field(default_factory=list)
-    sources: list[str] = Field(default_factory=list)
-    confidence: float = Field(ge=0.0, le=1.0)
-
-
-# --- Market ---
+# --- Common ---
 
 
 class KeyLevel(BaseModel, frozen=True):
@@ -61,15 +45,7 @@ class TakeProfit(BaseModel, frozen=True):
     close_pct: int = Field(ge=1, le=100)
 
 
-class MarketInterpretation(BaseModel, frozen=True):
-    trend: Trend
-    volatility_regime: VolatilityRegime
-    volatility_pct: float = Field(ge=0.0, default=0.0)
-    key_levels: list[KeyLevel]
-    risk_flags: list[str]
-
-
-# --- Technical Analysis (replaces MarketInterpretation for new pipeline) ---
+# --- Technical Analysis ---
 
 
 class TechnicalAnalysis(BaseModel, frozen=True):
