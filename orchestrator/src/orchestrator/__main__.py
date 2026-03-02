@@ -365,6 +365,7 @@ async def _run_bot(components: dict[str, Any], settings: Settings) -> None:
         scheduler.stop()
         await app.updater.stop()
         await app.stop()
+        await components["exchange_client"].close()
 
 
 def main() -> None:
