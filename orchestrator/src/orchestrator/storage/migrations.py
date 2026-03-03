@@ -79,6 +79,78 @@ def migrate_001_add_leverage_columns(conn: Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Migration 002 — backfill defaults for removed risk_check columns
+# ---------------------------------------------------------------------------
+
+_PROPOSAL_DEFAULT_COLUMNS: list[tuple[str, str, str]] = [
+    ("risk_check_result", "TEXT", "''"),
+    ("risk_check_reason", "TEXT", "''"),
+]
+
+
+@_register(2, "backfill_risk_check_defaults")
+def migrate_002_backfill_risk_check_defaults(conn: Connection) -> None:
+    """Add DEFAULT to risk_check columns so INSERTs work without them.
+
+    SQLite doesn't support ALTER COLUMN, so we recreate the table with
+    defaults.  However, the simpler approach is to just add the columns
+    with defaults if they're missing, or — if they already exist — create
+    a new table, copy data, and swap.
+
+    Since SQLite ≥3.35 supports UPDATE ... SET DEFAULT, the pragmatic fix
+    is to ensure the columns exist with defaults by recreating the table.
+    Instead, we take the lightest approach: if the columns exist but lack
+    a default, we can't alter them in SQLite.  So we create a new table
+    with the correct schema, copy the data, and rename.
+    """
+    insp = inspect(conn)
+    if "trade_proposals" not in insp.get_table_names():
+        return
+
+    existing = {col["name"] for col in insp.get_columns("trade_proposals")}
+    if "risk_check_result" not in existing:
+        # Columns don't exist — nothing to fix
+        return
+
+    # Recreate table with defaults on risk_check columns
+    conn.execute(text(
+        "CREATE TABLE IF NOT EXISTS trade_proposals_new ("
+        "  id INTEGER PRIMARY KEY,"
+        "  proposal_id TEXT UNIQUE NOT NULL,"
+        "  run_id TEXT NOT NULL,"
+        "  proposal_json TEXT NOT NULL,"
+        "  risk_check_result TEXT DEFAULT '',"
+        "  risk_check_reason TEXT DEFAULT '',"
+        "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        ")"
+    ))
+    conn.execute(text(
+        "INSERT INTO trade_proposals_new"
+        "  (id, proposal_id, run_id, proposal_json,"
+        "   risk_check_result, risk_check_reason, created_at) "
+        "SELECT id, proposal_id, run_id, proposal_json,"
+        "  COALESCE(risk_check_result, ''),"
+        "  COALESCE(risk_check_reason, ''), created_at "
+        "FROM trade_proposals"
+    ))
+    conn.execute(text("DROP TABLE trade_proposals"))
+    conn.execute(text(
+        "ALTER TABLE trade_proposals_new RENAME TO trade_proposals"
+    ))
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS"
+        " ix_trade_proposals_proposal_id"
+        " ON trade_proposals(proposal_id)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS"
+        " ix_trade_proposals_run_id"
+        " ON trade_proposals(run_id)"
+    ))
+    logger.info("migration_recreate_table", version=2, table="trade_proposals")
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
