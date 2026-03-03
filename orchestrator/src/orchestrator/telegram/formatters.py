@@ -269,13 +269,15 @@ def format_execution_result(result: ExecutionResult) -> str:
     lines = [
         f"{emoji} {result.side.upper()} {result.symbol}"
         f" \u00b7 {result.mode}",
-        f"${result.entry_price:,.1f} | {result.quantity:.4f}",
-        f"Fees: ${result.fees:,.2f}",
+        "",
+        f"\U0001f3af Entry: ${result.entry_price:,.1f}",
+        f"\U0001f4e6 Quantity: {result.quantity:.4f}",
+        f"\U0001f4b5 Fees: ${result.fees:,.2f}",
     ]
     if result.sl_order_id:
-        lines.append(f"SL order: {result.sl_order_id}")
+        lines.append(f"\u26d4 SL order: {result.sl_order_id}")
     if result.tp_order_id:
-        lines.append(f"TP order: {result.tp_order_id}")
+        lines.append(f"\u2705 TP order: {result.tp_order_id}")
     return "\n".join(lines)
 
 
@@ -299,12 +301,13 @@ def format_trade_report(result: CloseResult) -> str:
     )
 
     lines = [
-        f"{pnl_emoji} {reason_label} — {result.symbol} {side_str}",
-        f"${result.entry_price:,.1f} \u2192 ${result.exit_price:,.1f}",
-        f"PnL: {_pnl_str(result.pnl)} (fees ${result.fees:,.2f})",
+        f"{pnl_emoji} {reason_label} \u2014 {result.symbol} {side_str}",
+        "",
+        f"\U0001f3af Entry: ${result.entry_price:,.1f} \u2192 Exit: ${result.exit_price:,.1f}",
+        f"\U0001f4b0 PnL: {_pnl_str(result.pnl)} (fees ${result.fees:,.2f})",
     ]
     if result.remaining_quantity is not None:
-        lines.append(f"Remaining: {result.remaining_quantity:.4f}")
+        lines.append(f"\U0001f4e6 Remaining: {result.remaining_quantity:.4f}")
     return "\n".join(lines)
 
 
