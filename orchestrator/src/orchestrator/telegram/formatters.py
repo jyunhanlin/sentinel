@@ -797,8 +797,6 @@ def format_execution_plan(
     # --- Analysis section (optional) ---
     if analysis_summary:
         lines.append("")
-        lines.append("\u2500\u2500 Analysis \u2500\u2500")
-        lines.append("")
 
         label_map = {
             "technical": "\U0001f4c8 Technical",

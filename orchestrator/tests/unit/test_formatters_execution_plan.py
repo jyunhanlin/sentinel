@@ -98,7 +98,6 @@ def test_format_lower_section_contains_analysis():
         },
         rationale="BTC breaking above resistance with low funding.",
     )
-    assert "Analysis" in text
     assert "Technical" in text
     assert "Positioning" in text
     assert "Catalyst" in text
