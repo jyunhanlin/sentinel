@@ -158,3 +158,117 @@ class TestEvaluateSingle:
         result = evaluator.evaluate_single("t-1")
 
         assert result is None
+
+
+class TestEvaluate:
+    def _setup_repos(self, trades, proposals):
+        """Setup mock repos with given trades and proposals."""
+        trade_repo = MagicMock()
+        proposal_repo = MagicMock()
+        trade_repo.get_all_closed.return_value = trades
+        trade_repo.get_by_trade_id.side_effect = lambda tid: next(
+            (t for t in trades if t.trade_id == tid), None
+        )
+        proposal_repo.get_by_proposal_id.side_effect = lambda pid: next(
+            (p for p in proposals if p.proposal_id == pid), None
+        )
+        return trade_repo, proposal_repo
+
+    def test_evaluate_overall_accuracy(self):
+        trades = [
+            _make_trade_record(trade_id="t-1", proposal_id="p-1", pnl=100.0, close_reason="tp"),
+            _make_trade_record(trade_id="t-2", proposal_id="p-2", pnl=-50.0, close_reason="sl"),
+        ]
+        proposals = [
+            _make_proposal_record(proposal_id="p-1"),
+            _make_proposal_record(proposal_id="p-2"),
+        ]
+        trade_repo, proposal_repo = self._setup_repos(trades, proposals)
+        evaluator = PipelineEvaluator(trade_repo=trade_repo, proposal_repo=proposal_repo)
+
+        report = evaluator.evaluate()
+
+        assert report.total_evaluated == 2
+        assert report.direction_accuracy == 0.5
+        assert report.tp_hit_rate == 0.5
+        assert report.sl_hit_rate == 0.5
+
+    def test_evaluate_by_symbol(self):
+        trades = [
+            _make_trade_record(trade_id="t-1", proposal_id="p-1", symbol="BTC/USDT:USDT", pnl=100.0),
+            _make_trade_record(trade_id="t-2", proposal_id="p-2", symbol="ETH/USDT:USDT", pnl=-50.0),
+        ]
+        proposals = [
+            _make_proposal_record(proposal_id="p-1"),
+            _make_proposal_record(proposal_id="p-2"),
+        ]
+        trade_repo, proposal_repo = self._setup_repos(trades, proposals)
+        evaluator = PipelineEvaluator(trade_repo=trade_repo, proposal_repo=proposal_repo)
+
+        report = evaluator.evaluate()
+
+        assert len(report.by_symbol) == 2
+        btc = next(s for s in report.by_symbol if s.symbol == "BTC/USDT:USDT")
+        assert btc.direction_accuracy == 1.0
+
+    def test_evaluate_by_confidence(self):
+        trades = [
+            _make_trade_record(trade_id="t-1", proposal_id="p-1", pnl=100.0),
+            _make_trade_record(trade_id="t-2", proposal_id="p-2", pnl=-50.0),
+        ]
+        proposals = [
+            _make_proposal_record(proposal_id="p-1", confidence=0.80),
+            _make_proposal_record(proposal_id="p-2", confidence=0.30),
+        ]
+        trade_repo, proposal_repo = self._setup_repos(trades, proposals)
+        evaluator = PipelineEvaluator(trade_repo=trade_repo, proposal_repo=proposal_repo)
+
+        report = evaluator.evaluate()
+
+        assert len(report.by_confidence) >= 2
+        high = next(b for b in report.by_confidence if "high" in b.bucket)
+        low = next(b for b in report.by_confidence if "low" in b.bucket)
+        assert high.direction_accuracy == 1.0
+        assert low.direction_accuracy == 0.0
+
+    def test_evaluate_unmatched_trades(self):
+        trades = [
+            _make_trade_record(trade_id="t-1", proposal_id="p-1", pnl=100.0),
+            _make_trade_record(trade_id="t-2", proposal_id="p-missing", pnl=-50.0),
+        ]
+        proposals = [
+            _make_proposal_record(proposal_id="p-1"),
+        ]
+        trade_repo, proposal_repo = self._setup_repos(trades, proposals)
+        evaluator = PipelineEvaluator(trade_repo=trade_repo, proposal_repo=proposal_repo)
+
+        report = evaluator.evaluate()
+
+        assert report.total_evaluated == 1
+        assert report.total_unmatched == 1
+
+    def test_evaluate_empty_trades(self):
+        trade_repo, proposal_repo = self._setup_repos([], [])
+        evaluator = PipelineEvaluator(trade_repo=trade_repo, proposal_repo=proposal_repo)
+
+        report = evaluator.evaluate()
+
+        assert report.total_evaluated == 0
+        assert report.direction_accuracy == 0.0
+
+    def test_evaluate_symbol_filter(self):
+        trades = [
+            _make_trade_record(trade_id="t-1", proposal_id="p-1", symbol="BTC/USDT:USDT", pnl=100.0),
+            _make_trade_record(trade_id="t-2", proposal_id="p-2", symbol="ETH/USDT:USDT", pnl=-50.0),
+        ]
+        proposals = [
+            _make_proposal_record(proposal_id="p-1"),
+            _make_proposal_record(proposal_id="p-2"),
+        ]
+        trade_repo, proposal_repo = self._setup_repos(trades, proposals)
+        evaluator = PipelineEvaluator(trade_repo=trade_repo, proposal_repo=proposal_repo)
+
+        report = evaluator.evaluate(symbol="BTC/USDT:USDT")
+
+        assert report.total_evaluated == 1
+        assert report.direction_accuracy == 1.0
