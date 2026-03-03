@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     paper_default_leverage: int = 10
     paper_maintenance_margin_rate: float = 0.5  # %
     paper_leverage_options: list[int] = Field(default=[5, 10, 20, 50])
+    trade_margin_amount: float = 500.0
 
     # Price Monitor
     price_monitor_interval_seconds: int = 300  # check every N seconds
