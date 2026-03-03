@@ -704,6 +704,132 @@ def format_price_board(summaries: list) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Execution plan (two-section format)
+# ---------------------------------------------------------------------------
+
+def format_execution_plan(
+    *,
+    plan: object,
+    confidence: float,
+    time_horizon: str,
+    analysis_summary: dict[str, str] | None = None,
+    rationale: str | None = None,
+    model_used: str | None = None,
+    expires_minutes: int | None = None,
+) -> str:
+    """Format an ExecutionPlan as a two-section Telegram message.
+
+    Upper section: concrete trade parameters.
+    Lower section: agent analysis summaries + rationale.
+    """
+    side_str = plan.side.upper()  # type: ignore[attr-defined]
+    emoji = _SIDE_EMOJI.get(plan.side, "")  # type: ignore[attr-defined]
+    symbol = plan.symbol.replace(":USDT", "")  # type: ignore[attr-defined]
+
+    entry_price: float = plan.entry_price  # type: ignore[attr-defined]
+    quantity: float = plan.quantity  # type: ignore[attr-defined]
+    notional: float = plan.notional_value  # type: ignore[attr-defined]
+    margin: float = plan.margin_required  # type: ignore[attr-defined]
+    leverage: int = plan.leverage  # type: ignore[attr-defined]
+    margin_mode: str = plan.margin_mode  # type: ignore[attr-defined]
+    liq_price: float = plan.liquidation_price  # type: ignore[attr-defined]
+    max_loss: float = plan.max_loss  # type: ignore[attr-defined]
+    max_loss_pct: float = plan.max_loss_pct  # type: ignore[attr-defined]
+    rr: float = plan.risk_reward_ratio  # type: ignore[attr-defined]
+    tp_profits: list[float] = plan.tp_profits  # type: ignore[attr-defined]
+    order_type: str = plan.entry_order.order_type  # type: ignore[attr-defined]
+
+    # --- Upper section ---
+    bar = "\u2501" * 3
+    long_bar = "\u2501" * 15
+    lines = [
+        f"{bar} \u958b\u5009\u5efa\u8b70 {long_bar}",
+        "",
+        f"{emoji} {symbol} {side_str} \u00b7 Confidence {confidence:.0%}",
+        "",
+    ]
+
+    # Entry
+    entry_str = f"${entry_price:,.1f} ({order_type})"
+    if order_type == "limit" and plan.entry_order.price is not None:  # type: ignore[attr-defined]
+        entry_str = f"${plan.entry_order.price:,.1f} (limit)"  # type: ignore[attr-defined]
+    lines.append(f"\u25b6 Entry:     {entry_str}")
+    lines.append(f"  Quantity:  {quantity:.4f} (${notional:,.0f})")
+    lines.append(
+        f"  Margin:    ${margin:,.0f} \u00b7 {leverage}x {margin_mode}",
+    )
+    lines.append(f"  Liq:       ${liq_price:,.1f}")
+
+    # SL
+    sl_order = plan.sl_order  # type: ignore[attr-defined]
+    if sl_order is not None and sl_order.stop_price is not None:
+        sl_price = sl_order.stop_price
+        sl_pct = (sl_price - entry_price) / entry_price * 100
+        lines.append(f"\u26d4 Stop Loss: ${sl_price:,.1f} ({sl_pct:+.1f}%)")
+
+    # TPs
+    tp_orders = plan.tp_orders  # type: ignore[attr-defined]
+    for i, tp_order in enumerate(tp_orders):
+        if tp_order.stop_price is None:
+            continue
+        tp_pct = (tp_order.stop_price - entry_price) / entry_price * 100
+        close_pct_str = f"{tp_order.quantity / quantity * 100:.0f}%"
+        profit_str = ""
+        if i < len(tp_profits):
+            profit_str = f" \u2192 +${tp_profits[i]:,.0f}"
+        lines.append(
+            f"\u2705 TP{i + 1}:       ${tp_order.stop_price:,.1f}"
+            f" ({tp_pct:+.1f}%) \u2192 close {close_pct_str}{profit_str}",
+        )
+
+    # Loss / Profit / R:R
+    lines.append("")
+    lines.append(f"\u26a0\ufe0f \u6700\u5927\u8667\u640d: ${max_loss:,.0f} ({max_loss_pct:.1f}%)")
+    if tp_profits:
+        tp_parts = " / ".join(
+            f"TP{i + 1} +${p:,.0f}" for i, p in enumerate(tp_profits)
+        )
+        lines.append(f"\U0001f4b0 \u9810\u4f30\u7372\u5229: {tp_parts}")
+    lines.append(f"\U0001f4ca Risk/Reward: 1:{rr:.1f}")
+
+    # --- Lower section (optional) ---
+    if analysis_summary:
+        lines.append("")
+        lines.append(f"{bar} \u5206\u6790\u6458\u8981 {long_bar}")
+        lines.append("")
+
+        label_map = {
+            "technical": "\U0001f4c8 Technical",
+            "positioning": "\U0001f4b9 Positioning",
+            "catalyst": "\U0001f4c5 Catalyst",
+            "correlation": "\U0001f310 Correlation",
+        }
+        for key in ("technical", "positioning", "catalyst", "correlation"):
+            if key in analysis_summary:
+                label = label_map.get(key, key.title())
+                summary_lines = analysis_summary[key].split("\n")
+                lines.append(f"{label}: {summary_lines[0]}")
+                for extra in summary_lines[1:]:
+                    lines.append(f"   {extra}")
+
+    if rationale:
+        lines.append("")
+        lines.append("\U0001f4a1 \u5c40\u52e2\u5206\u6790")
+        lines.append(rationale)
+
+    # Footer
+    footer_parts: list[str] = []
+    if model_used:
+        footer_parts.append(f"Model: {model_used.split('/')[-1]}")
+    if expires_minutes is not None:
+        footer_parts.append(f"Expires in {expires_minutes} min")
+    if footer_parts:
+        lines.append(f"\n{' \u00b7 '.join(footer_parts)}")
+
+    return "\n".join(lines)
+
+
 def format_history(trades: list[PaperTradeRecord]) -> str:
     if not trades:
         return "No closed trades yet."
