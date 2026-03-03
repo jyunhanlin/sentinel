@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from orchestrator.exchange.paper_engine import CloseResult
 from orchestrator.stats.calculator import PerformanceStats
+from orchestrator.stats.evaluator import EvaluationReport, TradeEvaluation
 
 if TYPE_CHECKING:
     from orchestrator.approval.manager import PendingApproval
@@ -74,6 +75,7 @@ def format_help() -> str:
         "/run [symbol] [model] — Trigger pipeline\n"
         "/history — Trade records\n"
         "/perf — Performance report\n"
+        "/evaluate — Pipeline accuracy report\n"
         "/help — This message"
     )
 
@@ -772,4 +774,60 @@ def format_history(trades: list[PaperTradeRecord]) -> str:
             f"\n  ${t.entry_price:,.1f} \u2192 ${t.exit_price:,.1f}"
             f" | {_pnl_str(t.pnl)}"
         )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline evaluation
+# ---------------------------------------------------------------------------
+
+
+def format_trade_evaluation(ev: TradeEvaluation) -> str:
+    """Format a single trade evaluation as a one-line pipeline feedback."""
+    direction = "\u2705 Direction correct" if ev.direction_correct else "\u274c Direction wrong"
+    if ev.entry_deviation_pct is not None:
+        dev_str = f"Entry dev {ev.entry_deviation_pct:+.1f}%"
+    else:
+        dev_str = "Entry dev N/A"
+    return f"\U0001f4ca Pipeline: {direction} \u00b7 {dev_str} \u00b7 Confidence {ev.confidence}%"
+
+
+def format_evaluation_report(report: EvaluationReport) -> str:
+    """Format a full evaluation report for Telegram /evaluate command."""
+    if report.total_evaluated == 0:
+        return "No evaluated trades yet."
+
+    lines = [
+        "Pipeline Evaluation",
+        "",
+        f"\U0001f4ca Trades: {report.total_evaluated}"
+        + (f" ({report.total_unmatched} unmatched)" if report.total_unmatched else ""),
+        f"\U0001f3af Direction Accuracy: {report.direction_accuracy:.1%}",
+        f"\U0001f4cf Avg Entry Dev: {report.avg_entry_deviation_pct:+.2f}%",
+        f"\u2705 TP Rate: {report.tp_hit_rate:.1%}"
+        f" \u00b7 \u26d4 SL Rate: {report.sl_hit_rate:.1%}"
+        f" \u00b7 \U0001f480 Liq: {report.liquidation_rate:.1%}",
+    ]
+
+    if report.by_symbol:
+        lines.append("")
+        lines.append("By Symbol")
+        for s in report.by_symbol:
+            display = s.symbol.replace(":USDT", "")
+            lines.append(
+                f"  {display}: {s.direction_accuracy:.0%} acc"
+                f" \u00b7 {_pnl_str(s.total_pnl)}"
+                f" \u00b7 {s.total_trades} trades"
+            )
+
+    if report.by_confidence:
+        lines.append("")
+        lines.append("By Confidence")
+        for b in report.by_confidence:
+            lines.append(
+                f"  {b.bucket}: {b.direction_accuracy:.0%} acc"
+                f" \u00b7 avg {_pnl_str(b.avg_pnl)}"
+                f" \u00b7 {b.total_trades} trades"
+            )
+
     return "\n".join(lines)
