@@ -556,26 +556,28 @@ def format_position_card(info: dict) -> str:
 
     lines = [
         f"{pos.symbol}  {side_str}{leverage_str}",
-        f"Entry: ${pos.entry_price:,.1f} | Qty: {pos.quantity:.4f}",
+        "",
+        f"\U0001f3af Entry: ${pos.entry_price:,.1f}",
+        f"\U0001f4e6 Qty: {pos.quantity:.4f}",
     ]
     if pos.margin > 0:
         lines.append(
-            f"Margin: ${pos.margin:,.2f}"
-            f" | Liq: ${pos.liquidation_price:,.1f}"
+            f"\U0001f4b5 Margin: ${pos.margin:,.2f}"
+            f" \u00b7 \U0001f480 Liq: ${pos.liquidation_price:,.1f}"
         )
-    lines.append(f"Stop Loss: ${pos.stop_loss:,.1f}")
+    lines.append(f"\u26d4 Stop Loss: ${pos.stop_loss:,.1f}")
     if pos.take_profit:
         tp_str = ", ".join(
             f"${tp.price:,.1f} ({tp.close_pct}%)"
             for tp in pos.take_profit
         )
-        lines.append(f"Take Profit: {tp_str}")
+        lines.append(f"\u2705 Take Profit: {tp_str}")
 
     lines.append(
-        f"PnL: {pnl_sign}${pnl:,.2f} ({pnl_sign}{pnl_pct:.2f}%)"
+        f"\n\U0001f4b0 PnL: {pnl_sign}${pnl:,.2f} ({pnl_sign}{pnl_pct:.2f}%)"
     )
     if pos.margin > 0:
-        lines.append(f"ROE: {pnl_sign}{roe_pct:.2f}%")
+        lines.append(f"\U0001f4c8 ROE: {pnl_sign}{roe_pct:.2f}%")
 
     return "\n".join(lines)
 
@@ -599,14 +601,14 @@ def format_account_overview(
     lines = [
         "Account Overview",
         "",
-        f"Equity:      ${equity:,.2f}"
+        f"\U0001f4b5 Equity: ${equity:,.2f}"
         f" ({pnl_sign}${total_pnl:,.2f})",
-        f"Available:   ${available:,.2f}",
-        f"Used Margin: ${used_margin:,.2f}",
+        f"\U0001f4b0 Available: ${available:,.2f}",
+        f"\U0001f4ca Used Margin: ${used_margin:,.2f}",
     ]
 
     lines.append(
-        f"\nOpen Positions: {position_count}"
+        f"\n\U0001f4e6 Open Positions: {position_count}"
         if position_count > 0
         else "\nNo open positions"
     )
