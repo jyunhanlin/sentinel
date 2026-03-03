@@ -115,6 +115,12 @@ class TradeProposalRepository:
         )
         return list(self._session.exec(statement).all())
 
+    def get_by_proposal_id(self, proposal_id: str) -> TradeProposalRecord | None:
+        statement = select(TradeProposalRecord).where(
+            TradeProposalRecord.proposal_id == proposal_id
+        )
+        return self._session.exec(statement).first()
+
 
 class PaperTradeRepository:
     def __init__(self, session: Session) -> None:
