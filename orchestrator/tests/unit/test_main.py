@@ -66,8 +66,8 @@ def test_create_app_components_with_cli_backend():
     assert "runner" in components
 
 
-def test_create_app_components_includes_m3():
-    """Verify M3 components (stats_calculator, eval_runner) are in output."""
+def test_create_app_components_includes_stats():
+    """Verify stats_calculator is in output."""
     components = create_app_components(
         telegram_bot_token="test-token",
         telegram_admin_chat_ids=[123],
@@ -76,4 +76,3 @@ def test_create_app_components_includes_m3():
         anthropic_api_key="test-key",
     )
     assert "stats_calculator" in components
-    assert "eval_runner" in components

@@ -14,7 +14,6 @@ from telegram.ext import (
 )
 
 from orchestrator.telegram.formatters import (
-    format_eval_report,
     format_execution_plan,
     format_execution_result,
     format_help,
@@ -32,7 +31,6 @@ from orchestrator.telegram.translations import to_chinese
 
 if TYPE_CHECKING:
     from orchestrator.approval.manager import ApprovalManager, PendingApproval
-    from orchestrator.eval.runner import EvalRunner
     from orchestrator.exchange.data_fetcher import DataFetcher
     from orchestrator.exchange.paper_engine import CloseResult, PaperEngine
     from orchestrator.execution.executor import OrderExecutor
@@ -224,7 +222,6 @@ class SentinelBot:
         trade_repo: PaperTradeRepository | None = None,
         proposal_repo: TradeProposalRepository | None = None,
         snapshot_repo: AccountSnapshotRepository | None = None,
-        eval_runner: EvalRunner | None = None,
         approval_manager: ApprovalManager | None = None,
         executor: OrderExecutor | None = None,
         data_fetcher: DataFetcher | None = None,
@@ -243,7 +240,6 @@ class SentinelBot:
         self._trade_repo = trade_repo
         self._proposal_repo = proposal_repo
         self._snapshot_repo = snapshot_repo
-        self._eval_runner = eval_runner
         self._approval_manager = approval_manager
         self._executor = executor
         self._data_fetcher = data_fetcher
@@ -257,7 +253,6 @@ class SentinelBot:
         BotCommand("coin", "Detailed analysis for a symbol"),
         BotCommand("history", "Recent trade records"),
         BotCommand("perf", "Performance report"),
-        BotCommand("eval", "Run LLM evaluation"),
         BotCommand("resume", "Un-pause after risk pause"),
         BotCommand("help", "Show available commands"),
     ]
@@ -280,7 +275,6 @@ class SentinelBot:
         self._app.add_handler(CommandHandler("history", self._history_handler))
         self._app.add_handler(CommandHandler("resume", self._resume_handler))
         self._app.add_handler(CommandHandler("perf", self._perf_handler))
-        self._app.add_handler(CommandHandler("eval", self._eval_handler))
         self._app.add_handler(CommandHandler("preview", self._preview_handler))
         self._app.add_handler(CallbackQueryHandler(self._callback_router))
         return self._app
@@ -1463,26 +1457,6 @@ class SentinelBot:
         await _safe_callback_reply(
             query, text="\u274c Adjustment cancelled.",
         )
-
-    async def _eval_handler(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
-        if not await self._check_admin(update):
-            return
-        if self._eval_runner is None:
-            await self._reply(update, "Eval not configured.")
-            return
-        await self._reply(update, "Running evaluation...")
-        report = await self._eval_runner.run_default()
-        report_dict = report.model_dump()
-        report_dict["failures"] = [
-            {"case_id": cr["case_id"], "reason": "; ".join(
-                s["reason"] for s in cr["scores"] if not s["passed"]
-            )}
-            for cr in report_dict["case_results"]
-            if not cr["passed"]
-        ]
-        await self._reply(update, format_eval_report(report_dict))
 
     # --- Preview handler (hidden debug command) ---
 

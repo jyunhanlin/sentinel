@@ -75,7 +75,6 @@ def format_help() -> str:
         "/run [symbol] [model] — Trigger pipeline\n"
         "/history — Trade records\n"
         "/perf — Performance report\n"
-        "/eval — Run LLM evaluation\n"
         "/resume — Un-pause after risk pause\n"
         "/help — This message"
     )
@@ -507,31 +506,6 @@ def format_perf_report(stats: PerformanceStats) -> str:
         f"\U0001f4c9 Max DD: {stats.max_drawdown_pct:.1f}%",
         f"\U0001f4c8 Sharpe: {stats.sharpe_ratio:.2f}",
     ]
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Eval report
-# ---------------------------------------------------------------------------
-
-def format_eval_report(report: dict[str, Any]) -> str:
-    lines = [
-        f"Eval: {report['dataset_name']}",
-        "",
-        f"Cases: {report['total_cases']}"
-        f" | Pass: {report['passed_cases']}"
-        f" | Fail: {report['failed_cases']}",
-        f"Accuracy: {report['accuracy']:.0%}",
-    ]
-    if report.get("consistency_score") is not None:
-        lines.append(
-            f"Consistency: {report['consistency_score']:.1%}"
-        )
-    failures = report.get("failures", [])
-    if failures:
-        lines.append("")
-        for f in failures:
-            lines.append(f"  {f['case_id']}: {f['reason']}")
     return "\n".join(lines)
 
 

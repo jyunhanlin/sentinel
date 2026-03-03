@@ -289,41 +289,6 @@ class TestFormatPerfReport:
         assert "No trades" in text or "0" in text
 
 
-class TestFormatEvalReport:
-    def test_format_eval_report_with_failures(self):
-        from orchestrator.telegram.formatters import format_eval_report
-
-        report = {
-            "dataset_name": "golden_v1",
-            "total_cases": 5,
-            "passed_cases": 4,
-            "failed_cases": 1,
-            "accuracy": 0.8,
-            "consistency_score": 0.933,
-            "failures": [{"case_id": "bear_divergence", "reason": "expected SHORT, got LONG"}],
-        }
-        text = format_eval_report(report)
-        assert "golden_v1" in text
-        assert "80" in text
-        assert "bear_divergence" in text
-        assert "93" in text
-
-    def test_format_eval_report_all_passed(self):
-        from orchestrator.telegram.formatters import format_eval_report
-
-        report = {
-            "dataset_name": "golden_v1",
-            "total_cases": 5,
-            "passed_cases": 5,
-            "failed_cases": 0,
-            "accuracy": 1.0,
-            "consistency_score": 1.0,
-            "failures": [],
-        }
-        text = format_eval_report(report)
-        assert "100" in text
-
-
 class TestFormatPendingApproval:
     def test_format_pending_long(self):
         from datetime import UTC, datetime, timedelta
@@ -541,21 +506,6 @@ class TestBotStatusFromDB:
         text = format_status_from_records([record])
         assert "BTC/USDT:USDT" in text
         assert "approved" in text.lower()
-
-
-class TestEvalHandler:
-    @pytest.mark.asyncio
-    async def test_eval_handler_no_runner(self):
-        """Without eval runner, /eval should say not configured."""
-        bot = SentinelBot(token="test-token", admin_chat_ids=[123])
-        update = MagicMock()
-        update.effective_chat.id = 123
-        update.message.reply_text = AsyncMock()
-        context = MagicMock()
-
-        await bot._eval_handler(update, context)
-        text = update.message.reply_text.call_args[0][0]
-        assert "not configured" in text.lower()
 
 
 def _make_update(chat_id: int = 123):
@@ -1156,26 +1106,6 @@ class TestCoinHandlerDB:
         update = _make_update(123)
         await bot._coin_handler(update, _make_context(args=["BTC"]))
         update.message.reply_text.assert_called()
-
-
-class TestEvalHandlerWithRunner:
-    @pytest.mark.asyncio
-    async def test_eval_handler_runs(self):
-        from orchestrator.eval.runner import CaseResult, EvalReport
-
-        mock_runner = AsyncMock()
-        mock_runner.run_default.return_value = EvalReport(
-            dataset_name="golden_v1", total_cases=1,
-            passed_cases=1, failed_cases=0, accuracy=1.0,
-            case_results=[
-                CaseResult(case_id="test", passed=True, scores=[]),
-            ],
-        )
-        bot = SentinelBot(token="t", admin_chat_ids=[123], eval_runner=mock_runner)
-        update = _make_update(123)
-        await bot._eval_handler(update, _make_context())
-        # Should have 2 calls: "Running evaluation..." and the report
-        assert update.message.reply_text.call_count == 2
 
 
 class TestPerfHandler:

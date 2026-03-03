@@ -23,7 +23,6 @@
 |---------|---------|
 | pytest / pytest-asyncio / pytest-cov | Testing |
 | ruff | Linting |
-| pyyaml | Eval dataset loading |
 
 ## External Services
 
@@ -51,7 +50,6 @@ __main__.py (composition root)
   ├── execution ───────── exchange (ExchangeClient) | paper_engine
   ├── pipeline ────────── agents + exchange + risk + approval + storage
   ├── stats ───────────── (pure logic)
-  ├── eval ────────────── pipeline + pyyaml
   └── telegram ────────── python-telegram-bot + llm (translations)
 ```
 

@@ -89,7 +89,6 @@ All config via environment variables or `.env` file at the repo root.
 | `/run [symbol] [sonnet\|opus]` | Trigger pipeline manually                            |
 | `/history`                     | Recent closed trades                                 |
 | `/perf`                        | Performance report (PnL, win rate, Sharpe, drawdown) |
-| `/eval`                        | Run LLM evaluation against golden dataset            |
 | `/resume`                      | Un-pause pipeline after risk pause                   |
 
 Trade proposals appear with **Approve / Reject** inline buttons. Unanswered proposals expire after the configured timeout.
@@ -97,9 +96,6 @@ Trade proposals appear with **Approve / Reject** inline buttons. Unanswered prop
 ## CLI Subcommands
 
 ```bash
-# Run LLM evaluation
-uv run python -m orchestrator eval
-
 # Print performance report
 uv run python -m orchestrator perf
 ```
@@ -127,7 +123,6 @@ sentinel/
 │   └── src/orchestrator/
 │       ├── agents/            # LLM agents (technical, positioning, catalyst, correlation, proposer)
 │       ├── approval/          # Approval state machine + models
-│       ├── eval/              # Golden dataset evaluation framework
 │       ├── exchange/          # CCXT client, data fetcher, external data (DXY, S&P, BTC.D), paper engine
 │       ├── execution/         # OrderExecutor (paper/live)
 │       ├── llm/               # LiteLLM / Claude CLI backend + schema validation

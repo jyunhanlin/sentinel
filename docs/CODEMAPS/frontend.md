@@ -15,7 +15,6 @@
 | `/run [sym] [model]` | run_cmd | Trigger pipeline (model: sonnet/opus) |
 | `/history [sym] [page]` | history_cmd | Paginated closed trades |
 | `/perf` | perf_cmd | Performance stats (win rate, Sharpe, drawdown) |
-| `/eval` | eval_cmd | Run LLM evaluation dataset |
 | `/resume` | resume_cmd | Unpause paper engine after risk pause |
 
 ### Push Notifications
@@ -72,7 +71,6 @@ Pure functions, no I/O. All return Telegram MarkdownV2 strings:
 | format_risk_pause | reason | Pause notification |
 | format_status | list | Account overview + positions |
 | format_perf_report | PerformanceStats | Win rate, Sharpe, drawdown |
-| format_eval_report | EvalReport | Eval scores |
 | format_position_card | PositionInfo | Single position detail |
 | format_account_overview | equity, margin, etc | Balance summary |
 | format_history_paginated | trades, page | Paginated trade list |

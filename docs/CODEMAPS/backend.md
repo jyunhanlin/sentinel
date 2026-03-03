@@ -5,7 +5,7 @@
 ## Entry Point
 
 `orchestrator/__main__.py` (392L)
-- `parse_args()` → subcommands: `eval`, `perf`, default=bot
+- `parse_args()` → subcommands: `perf`, default=bot
 - `create_app_components(**kwargs)` → manual DI, returns component dict
 - `_run_bot(components, settings)` → starts scheduler + Telegram bot
 

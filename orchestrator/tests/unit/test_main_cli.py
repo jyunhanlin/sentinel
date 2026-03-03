@@ -6,10 +6,6 @@ class TestParseArgs:
         args = parse_args([])
         assert args.command is None
 
-    def test_eval_subcommand(self):
-        args = parse_args(["eval"])
-        assert args.command == "eval"
-
     def test_perf_subcommand(self):
         args = parse_args(["perf"])
         assert args.command == "perf"

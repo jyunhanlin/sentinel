@@ -74,4 +74,3 @@ price_monitor._on_tick   → bot.update_price_board
 | `approval/` | Trade approval lifecycle | manager.py (123L) |
 | `execution/` | Order execution | executor.py (224L) |
 | `stats/` | Performance metrics | calculator.py (101L) |
-| `eval/` | LLM evaluation | runner.py, dataset.py, scorers.py, consistency.py |

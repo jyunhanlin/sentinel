@@ -15,7 +15,6 @@ from orchestrator.agents.proposer import ProposerAgent
 from orchestrator.agents.technical import TechnicalAgent
 from orchestrator.approval.manager import ApprovalManager
 from orchestrator.config import Settings
-from orchestrator.eval.runner import EvalRunner
 from orchestrator.exchange.client import ExchangeClient
 from orchestrator.exchange.data_fetcher import DataFetcher
 from orchestrator.exchange.external_data import ExternalDataFetcher
@@ -48,7 +47,6 @@ logger = structlog.get_logger(__name__)
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="orchestrator", description="Sentinel Orchestrator")
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("eval", help="Run LLM evaluation against golden dataset")
     subparsers.add_parser("perf", help="Print performance report")
     return parser.parse_args(argv)
 
@@ -228,16 +226,6 @@ def create_app_components(
         price_monitor_interval_seconds=price_monitor_interval_seconds,
     )
 
-    # Eval
-    eval_runner = EvalRunner(
-        technical_short_agent=technical_short,
-        technical_long_agent=technical_long,
-        positioning_agent=positioning_agent,
-        catalyst_agent=catalyst_agent,
-        correlation_agent=correlation_agent,
-        proposer_agent=proposer_agent,
-    )
-
     # Telegram
     bot = SentinelBot(
         token=telegram_bot_token,
@@ -251,7 +239,6 @@ def create_app_components(
         approval_manager=approval_manager,
         executor=executor,
         data_fetcher=data_fetcher,
-        eval_runner=eval_runner,
         llm_client=llm_client,
     )
 
@@ -264,7 +251,6 @@ def create_app_components(
         "risk_checker": risk_checker,
         "paper_engine": paper_engine,
         "stats_calculator": stats_calculator,
-        "eval_runner": eval_runner,
         "snapshot_repo": account_snapshot_repo,
         "approval_manager": approval_manager,
         "executor": executor,
@@ -303,23 +289,6 @@ def _build_components(settings: Settings) -> dict[str, Any]:
         price_monitor_interval_seconds=settings.price_monitor_interval_seconds,
         price_monitor_enabled=settings.price_monitor_enabled,
     )
-
-
-async def _run_eval(components: dict[str, Any]) -> None:
-    eval_runner: EvalRunner = components["eval_runner"]
-    report = await eval_runner.run_default()
-    print(f"Dataset: {report.dataset_name}")
-    print(
-        f"Cases: {report.total_cases} | Passed: {report.passed_cases}"
-        f" | Failed: {report.failed_cases}"
-    )
-    print(f"Accuracy: {report.accuracy:.0%}")
-    for cr in report.case_results:
-        status = "PASS" if cr.passed else "FAIL"
-        print(f"  [{status}] {cr.case_id}")
-        for s in cr.scores:
-            if not s.passed:
-                print(f"    {s.field}: {s.reason}")
 
 
 def _run_perf(components: dict[str, Any]) -> None:
@@ -392,10 +361,6 @@ def main() -> None:
     logger.info("starting_sentinel", exchange=settings.exchange_id)
 
     components = _build_components(settings)
-
-    if args.command == "eval":
-        asyncio.run(_run_eval(components))
-        return
 
     if args.command == "perf":
         _run_perf(components)
