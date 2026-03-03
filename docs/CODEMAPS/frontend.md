@@ -15,6 +15,7 @@
 | `/run [sym] [model]` | run_cmd | Trigger pipeline (model: sonnet/opus) |
 | `/history [sym] [page]` | history_cmd | Paginated closed trades |
 | `/perf` | perf_cmd | Performance stats (win rate, Sharpe, drawdown) |
+| `/evaluate` | evaluate_cmd | Pipeline accuracy report (direction, entry deviation, confidence buckets) |
 | `/resume` | resume_cmd | Unpause paper engine after risk pause |
 
 ### Push Notifications
@@ -25,7 +26,7 @@ push_to_admins_with_approval(PipelineResult)
   ├── FLAT signal → plain notification
   └── rejected/failed → status notification
 
-push_close_report(CloseResult) → SL/TP/liquidation alert
+push_close_report(CloseResult) → SL/TP/liquidation alert + pipeline evaluation feedback
 update_price_board(TickerSummary[]) → pinned message, auto-edit
 ```
 
@@ -75,6 +76,8 @@ Pure functions, no I/O. All return Telegram MarkdownV2 strings:
 | format_account_overview | equity, margin, etc | Balance summary |
 | format_history_paginated | trades, page | Paginated trade list |
 | format_price_board | TickerSummary[] | Compact price ticker |
+| format_trade_evaluation | TradeEvaluation | One-line pipeline feedback (direction/deviation/confidence) |
+| format_evaluation_report | EvaluationReport | Full evaluation report (by symbol, by confidence bucket) |
 
 ## Translations (`telegram/translations.py`, 37L)
 

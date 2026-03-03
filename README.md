@@ -86,6 +86,7 @@ All config via environment variables or `.env` file at the repo root.
 | `/run [symbol] [sonnet\|opus]` | Trigger pipeline manually                            |
 | `/history`                     | Recent closed trades                                 |
 | `/perf`                        | Performance report (PnL, win rate, Sharpe, drawdown) |
+| `/evaluate`                    | Pipeline accuracy report (direction, entry deviation)|
 
 Trade proposals appear with **Approve / Reject** inline buttons. Unanswered proposals expire after the configured timeout.
 
@@ -123,7 +124,7 @@ sentinel/
 │       ├── execution/         # OrderExecutor (paper/live) + position sizers
 │       ├── llm/               # LiteLLM / Claude CLI backend + schema validation
 │       ├── pipeline/          # Runner, scheduler, aggregator
-│       ├── stats/             # Performance statistics calculator
+│       ├── stats/             # Performance statistics + pipeline evaluator
 │       ├── storage/           # SQLModel tables + repositories
 │       ├── telegram/          # Bot handlers + formatters
 │       ├── config.py          # Pydantic settings

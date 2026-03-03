@@ -68,4 +68,4 @@ price_monitor._on_tick   → bot.update_price_board
 | `storage/` | SQLite persistence | repository.py (441L), models.py, database.py, migrations.py |
 | `telegram/` | Bot UI & notifications | bot.py (1483L), formatters.py (718L), translations.py |
 | `approval/` | Trade approval lifecycle | manager.py (123L) |
-| `stats/` | Performance metrics | calculator.py (101L) |
+| `stats/` | Performance metrics + pipeline evaluation | calculator.py (101L), evaluator.py (224L) |

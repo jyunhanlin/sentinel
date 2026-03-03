@@ -49,7 +49,7 @@ account_snapshots
 |-----------|-------------|
 | PipelineRepository | create_run, get_run, update_run_status |
 | LLMCallRepository | save_call, list_by_run |
-| TradeProposalRepository | save_proposal, get_recent(limit) |
+| TradeProposalRepository | save_proposal, get_recent(limit), get_by_proposal_id |
 | PaperTradeRepository | save_trade, count_consecutive_losses, get_daily_pnl, get_closed_paginated |
 | AccountSnapshotRepository | save_snapshot, get_latest |
 | ApprovalRepository | save_approval, update_status, get_pending |
@@ -72,6 +72,8 @@ All `frozen=True` Pydantic models:
 | TradeProposal | symbol, side, entry, position_size_risk_pct, stop_loss, take_profit[], suggested_leverage, confidence, invalid_if, rationale |
 | MarketSnapshot | symbol, timeframe, ohlcv, funding_rate, last_price |
 | TickerSummary | symbol, last_price, change_24h_pct, volume_24h |
+| TradeEvaluation | trade_id, proposal_id, symbol, direction_correct, entry_deviation_pct, close_reason, confidence, pnl |
+| EvaluationReport | total_evaluated, total_unmatched, direction_accuracy, sl/tp/liq rates, by_symbol, by_confidence |
 
 ### Enums
 
