@@ -244,12 +244,21 @@ class SentinelBot:
         self._price_board_msg_ids: dict[int, int] = {}  # chat_id → message_id
         self._adjustments: dict[str, dict[str, Any]] = {}  # approval_id → adjusted params
 
+        from orchestrator.stats.evaluator import PipelineEvaluator
+
+        self._evaluator: PipelineEvaluator | None = None
+        if trade_repo is not None and proposal_repo is not None:
+            self._evaluator = PipelineEvaluator(
+                trade_repo=trade_repo, proposal_repo=proposal_repo,
+            )
+
     _BOT_COMMANDS = [
         BotCommand("status", "Account overview & latest proposals"),
         BotCommand("run", "Trigger pipeline for all symbols"),
         BotCommand("coin", "Detailed analysis for a symbol"),
         BotCommand("history", "Recent trade records"),
         BotCommand("perf", "Performance report"),
+        BotCommand("evaluate", "Pipeline accuracy report"),
         BotCommand("help", "Show available commands"),
     ]
 
@@ -270,6 +279,7 @@ class SentinelBot:
         self._app.add_handler(CommandHandler("run", self._run_handler))
         self._app.add_handler(CommandHandler("history", self._history_handler))
         self._app.add_handler(CommandHandler("perf", self._perf_handler))
+        self._app.add_handler(CommandHandler("evaluate", self._evaluate_handler))
         self._app.add_handler(CommandHandler("preview", self._preview_handler))
         self._app.add_handler(CallbackQueryHandler(self._callback_router))
         return self._app
@@ -671,6 +681,20 @@ class SentinelBot:
             sharpe_ratio=snapshot.sharpe_ratio,
         )
         await self._reply(update, format_perf_report(stats))
+
+    async def _evaluate_handler(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._check_admin(update):
+            return
+        if self._evaluator is None:
+            await self._reply(update, "Evaluator not configured.")
+            return
+
+        from orchestrator.telegram.formatters import format_evaluation_report
+
+        report = self._evaluator.evaluate()
+        await self._reply(update, format_evaluation_report(report))
 
     # --- Approval flow ---
 
