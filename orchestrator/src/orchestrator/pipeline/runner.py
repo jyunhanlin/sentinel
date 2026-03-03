@@ -12,6 +12,7 @@ from orchestrator.agents.base import AgentResult, BaseAgent
 from orchestrator.exchange.data_fetcher import DataFetcher
 from orchestrator.exchange.external_data import ExternalDataFetcher
 from orchestrator.exchange.paper_engine import CloseResult
+from orchestrator.execution.plan import ExecutionPlan
 from orchestrator.models import (
     CatalystReport,
     CorrelationAnalysis,
@@ -31,6 +32,7 @@ from orchestrator.storage.repository import (
 if TYPE_CHECKING:
     from orchestrator.approval.manager import ApprovalManager
     from orchestrator.exchange.paper_engine import PaperEngine
+    from orchestrator.execution.planner import ExecutionPlanner
     from orchestrator.risk.checker import RiskChecker
 
 logger = structlog.get_logger(__name__)
@@ -58,6 +60,7 @@ class PipelineResult(BaseModel, frozen=True):
     positioning: PositioningAnalysis | None = None
     catalyst: CatalystReport | None = None
     correlation: CorrelationAnalysis | None = None
+    execution_plan: ExecutionPlan | None = None
 
 
 class PipelineRunner:
@@ -78,6 +81,7 @@ class PipelineRunner:
         risk_checker: RiskChecker | None = None,
         paper_engine: PaperEngine | None = None,
         approval_manager: ApprovalManager | None = None,
+        execution_planner: ExecutionPlanner | None = None,
     ) -> None:
         self._data_fetcher = data_fetcher
         self._technical_short_agent = technical_short_agent
@@ -93,6 +97,7 @@ class PipelineRunner:
         self._risk_checker = risk_checker
         self._paper_engine = paper_engine
         self._approval_manager = approval_manager
+        self._execution_planner = execution_planner
 
     async def execute(
         self, symbol: str, *, timeframe: str = "1h", model_override: str | None = None
@@ -203,6 +208,16 @@ class PipelineRunner:
                     correlation_result=correlation_result,
                 )
 
+            # Step 4b: Compute execution plan
+            execution_plan: ExecutionPlan | None = None
+            if (
+                self._execution_planner is not None
+                and aggregation.proposal.side != Side.FLAT
+            ):
+                execution_plan = await self._execution_planner.create_plan(
+                    aggregation.proposal, snapshot.current_price,
+                )
+
             # Step 5: Risk check
             risk_result: RiskResult | None = None
             if self._risk_checker is not None and self._paper_engine is not None:
@@ -251,6 +266,7 @@ class PipelineRunner:
                         positioning_result=positioning_result,
                         catalyst_result=catalyst_result,
                         correlation_result=correlation_result,
+                        execution_plan=execution_plan,
                     )
 
                 # Step 6: Open position or create pending approval
@@ -282,6 +298,7 @@ class PipelineRunner:
                             positioning_result=positioning_result,
                             catalyst_result=catalyst_result,
                             correlation_result=correlation_result,
+                            execution_plan=execution_plan,
                         )
                     else:
                         # Auto mode: execute immediately
@@ -309,6 +326,7 @@ class PipelineRunner:
                 positioning_result=positioning_result,
                 catalyst_result=catalyst_result,
                 correlation_result=correlation_result,
+                execution_plan=execution_plan,
             )
 
         except Exception as e:
@@ -345,6 +363,7 @@ class PipelineRunner:
         positioning_result: AgentResult[PositioningAnalysis] | None = None,
         catalyst_result: AgentResult[CatalystReport] | None = None,
         correlation_result: AgentResult[CorrelationAnalysis] | None = None,
+        execution_plan: ExecutionPlan | None = None,
     ) -> PipelineResult:
         return PipelineResult(
             run_id=run_id,
@@ -366,6 +385,7 @@ class PipelineRunner:
             positioning=positioning_result.output if positioning_result else None,
             catalyst=catalyst_result.output if catalyst_result else None,
             correlation=correlation_result.output if correlation_result else None,
+            execution_plan=execution_plan,
         )
 
     def _save_llm_calls(self, run_id: str, agent_type: str, result: AgentResult[BaseModel]) -> None:
