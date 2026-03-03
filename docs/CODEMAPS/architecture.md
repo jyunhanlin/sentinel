@@ -5,7 +5,7 @@
 ## System Overview
 
 Async Python 3.12+ crypto futures trading orchestrator.
-5+1 LLM agent pipeline → risk gate → semi-auto Telegram approval → paper/live execution.
+5+1 LLM agent pipeline → semi-auto Telegram approval → paper/live execution.
 
 ```
                ┌─────────────────────────────────────────┐
@@ -23,13 +23,10 @@ Async Python 3.12+ crypto futures trading orchestrator.
           │
     ┌─────┼─────────────────────┐
     ▼     ▼                     ▼
-  Agents(5)  →  ProposerAgent  →  RiskChecker
-  (parallel)    (serial)           │
-                                   ▼
-                            ApprovalManager
-                                   │
-                                   ▼
-                            OrderExecutor
+  Agents(5)  →  ProposerAgent  →  ApprovalManager
+  (parallel)    (serial)              │
+                                      ▼
+                               OrderExecutor
                             (Paper | Live)
 ```
 
@@ -39,9 +36,8 @@ Async Python 3.12+ crypto futures trading orchestrator.
 2. **5-agent analysis** — technical×2, positioning, catalyst, correlation (parallel)
 3. **Proposer** — synthesizes all analyses into `TradeProposal` (serial)
 4. **Aggregation** — validates SL placement
-5. **Risk check** — 4 rules (single risk, total exposure, consecutive losses, daily loss)
-6. **Approval** — Telegram inline keyboard (approve → leverage → margin → execute)
-7. **Persistence** — SQLite via SQLModel repositories
+5. **Approval** — Telegram inline keyboard (approve → leverage → margin → execute)
+6. **Persistence** — SQLite via SQLModel repositories
 
 ## Callback Wiring
 
@@ -68,9 +64,8 @@ price_monitor._on_tick   → bot.update_price_board
 | `pipeline/` | Orchestration & scheduling | runner.py (385L), scheduler.py (143L), aggregator.py (48L) |
 | `exchange/` | Market data & paper trading | client.py, data_fetcher.py, paper_engine.py (677L), price_monitor.py |
 | `llm/` | LLM abstraction | backend.py (205L), client.py, schema_validator.py |
-| `risk/` | Risk management | checker.py (100L), position_sizer.py (39L) |
+| `execution/` | Order execution + position sizing | executor.py, position_sizer.py, planner.py, plan.py, equity.py |
 | `storage/` | SQLite persistence | repository.py (441L), models.py, database.py, migrations.py |
 | `telegram/` | Bot UI & notifications | bot.py (1483L), formatters.py (718L), translations.py |
 | `approval/` | Trade approval lifecycle | manager.py (123L) |
-| `execution/` | Order execution | executor.py (224L) |
 | `stats/` | Performance metrics | calculator.py (101L) |

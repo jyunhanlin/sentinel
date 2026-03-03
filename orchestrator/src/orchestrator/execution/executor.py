@@ -12,7 +12,7 @@ from orchestrator.models import TradeProposal
 if TYPE_CHECKING:
     from orchestrator.exchange.client import ExchangeClient
     from orchestrator.exchange.paper_engine import PaperEngine
-    from orchestrator.risk.position_sizer import PositionSizer
+    from orchestrator.execution.position_sizer import PositionSizer
 
 logger = structlog.get_logger(__name__)
 
@@ -61,7 +61,7 @@ class PaperExecutor(OrderExecutor):
         margin_usdt: float | None = None,
     ) -> ExecutionResult:
         if margin_usdt is not None:
-            from orchestrator.risk.position_sizer import MarginSizer
+            from orchestrator.execution.position_sizer import MarginSizer
 
             sizer = MarginSizer()
             qty = sizer.calculate_from_margin(

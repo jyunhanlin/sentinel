@@ -37,12 +37,6 @@ class Settings(BaseSettings):
     pipeline_interval_minutes: int = 720
     pipeline_symbols: list[str] = Field(default=["BTC/USDT:USDT", "ETH/USDT:USDT"])
 
-    # Risk
-    max_single_risk_pct: float = 2.0
-    max_total_exposure_pct: float = 20.0
-    max_daily_loss_pct: float = 5.0
-    max_consecutive_losses: int = 5
-
     # Paper Trading
     paper_initial_equity: float = 10000.0
     paper_taker_fee_rate: float = 0.0005   # 0.05%

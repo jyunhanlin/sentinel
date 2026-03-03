@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 import structlog
 from pydantic import BaseModel
 
+from orchestrator.execution.position_sizer import PositionSizer
 from orchestrator.models import Side, TakeProfit, TradeProposal
-from orchestrator.risk.position_sizer import PositionSizer
 from orchestrator.stats.calculator import StatsCalculator
 
 if TYPE_CHECKING:
@@ -70,23 +70,14 @@ class PaperEngine:
         self._positions: list[Position] = []
         self._closed_pnl: float = 0.0
         self._total_fees: float = 0.0
-        self._paused: bool = False
 
     @property
     def equity(self) -> float:
         return self._initial_equity + self._closed_pnl - self._total_fees
 
     @property
-    def paused(self) -> bool:
-        return self._paused
-
-    @property
     def open_positions_risk_pct(self) -> float:
         return sum(p.risk_pct for p in self._positions)
-
-    def set_paused(self, paused: bool) -> None:
-        self._paused = paused
-        logger.info("engine_pause_state", paused=paused)
 
     def get_open_positions(self) -> list[Position]:
         return list(self._positions)

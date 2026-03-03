@@ -2,7 +2,7 @@
 
 Multi-LLM crypto trade proposal system with semi-auto execution via Telegram.
 
-Five AI agents analyze technical structure (short & long term), positioning, catalysts, and cross-market correlations, then a Proposer agent synthesizes a trade proposal. Proposals pass through risk checks and require manual approval via Telegram inline keyboard before execution (paper or live).
+Five AI agents analyze technical structure (short & long term), positioning, catalysts, and cross-market correlations, then a Proposer agent synthesizes a trade proposal. Proposals require manual approval via Telegram inline keyboard before execution (paper or live).
 
 ## Architecture
 
@@ -11,10 +11,10 @@ Scheduler (every N min)
     │
     ├─ Technical (short-term) ──┐
     ├─ Technical (long-term) ───┤
-    ├─ Positioning ─────────────┼─ Proposer → Aggregator → Risk Check
-    ├─ Catalyst ────────────────┤                              │
-    ├─ Correlation ─────────────┘                              ▼
-    │                                           TG Push [Approve / Reject]
+    ├─ Positioning ─────────────┼─ Proposer → Aggregator
+    ├─ Catalyst ────────────────┤                  │
+    ├─ Correlation ─────────────┘                  ▼
+    │                                TG Push [Approve / Reject]
     │                                                          │
     │                                                 OrderExecutor (Paper/Live)
     │                                                          │
@@ -75,9 +75,6 @@ All config via environment variables or `.env` file at the repo root.
 | `APPROVAL_TIMEOUT_MINUTES`  | `15`                          | Approval expiry time                                  |
 | `PRICE_DEVIATION_THRESHOLD` | `0.01`                        | Max price change (1%) before rejecting stale approval |
 | `PAPER_INITIAL_EQUITY`      | `10000.0`                     | Starting paper balance                                |
-| `MAX_SINGLE_RISK_PCT`       | `2.0`                         | Max risk per trade                                    |
-| `MAX_TOTAL_EXPOSURE_PCT`    | `20.0`                        | Max total open exposure                               |
-| `MAX_DAILY_LOSS_PCT`        | `5.0`                         | Daily loss limit (pauses trading)                     |
 
 ## Telegram Commands
 
@@ -89,7 +86,6 @@ All config via environment variables or `.env` file at the repo root.
 | `/run [symbol] [sonnet\|opus]` | Trigger pipeline manually                            |
 | `/history`                     | Recent closed trades                                 |
 | `/perf`                        | Performance report (PnL, win rate, Sharpe, drawdown) |
-| `/resume`                      | Un-pause pipeline after risk pause                   |
 
 Trade proposals appear with **Approve / Reject** inline buttons. Unanswered proposals expire after the configured timeout.
 
@@ -124,10 +120,9 @@ sentinel/
 │       ├── agents/            # LLM agents (technical, positioning, catalyst, correlation, proposer)
 │       ├── approval/          # Approval state machine + models
 │       ├── exchange/          # CCXT client, data fetcher, external data (DXY, S&P, BTC.D), paper engine
-│       ├── execution/         # OrderExecutor (paper/live)
+│       ├── execution/         # OrderExecutor (paper/live) + position sizers
 │       ├── llm/               # LiteLLM / Claude CLI backend + schema validation
 │       ├── pipeline/          # Runner, scheduler, aggregator
-│       ├── risk/              # Risk checker + position sizer
 │       ├── stats/             # Performance statistics calculator
 │       ├── storage/           # SQLModel tables + repositories
 │       ├── telegram/          # Bot handlers + formatters

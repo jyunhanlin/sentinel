@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from orchestrator.exchange.paper_engine import CloseResult
-from orchestrator.risk.checker import RiskResult
 from orchestrator.stats.calculator import PerformanceStats
 
 if TYPE_CHECKING:
@@ -75,7 +74,6 @@ def format_help() -> str:
         "/run [symbol] [model] — Trigger pipeline\n"
         "/history — Trade records\n"
         "/perf — Performance report\n"
-        "/resume — Un-pause after risk pause\n"
         "/help — This message"
     )
 
@@ -311,46 +309,6 @@ def format_trade_report(result: CloseResult) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Risk rejection
-# ---------------------------------------------------------------------------
-
-def format_risk_rejection(
-    *, symbol: str, side: str, entry_price: float,
-    risk_result: RiskResult,
-) -> str:
-    label = (
-        "\u23f8 RISK PAUSED"
-        if risk_result.action == "pause"
-        else "\U0001f6ab RISK REJECTED"
-    )
-    lines = [
-        f"{label}",
-        f"{symbol} {side} @ ${entry_price:,.1f}",
-        f"\n{risk_result.rule_violated}: {risk_result.reason}",
-    ]
-    return "\n".join(lines)
-
-
-def format_risk_pause(
-    *, symbol: str, side: str, entry_price: float,
-    risk_result: RiskResult,
-) -> str:
-    """Format a risk pause notification with clear instructions."""
-    lines = [
-        "\u23f8 TRADING PAUSED",
-        "",
-        f"{symbol} {side} @ ${entry_price:,.1f}",
-        "",
-        f"Rule: {risk_result.rule_violated}",
-        f"Reason: {risk_result.reason}",
-        "",
-        "All new trades are blocked until you resume.",
-        "Tap the button below or use /resume to continue.",
-    ]
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
 # Status / overview
 # ---------------------------------------------------------------------------
 
@@ -424,7 +382,7 @@ def format_status_from_records(
             p = json.loads(r.proposal_json)
             symbol = p.get("symbol", "?")
             side = p.get("side", "?").upper()
-            status = r.risk_check_result or "unknown"
+            status = "recorded"
             time_str = _fmt_time(r.created_at)
             blocks.append(
                 f"\n{symbol} — {side} [{status}]  ({time_str})"

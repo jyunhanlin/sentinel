@@ -19,7 +19,6 @@ from orchestrator.models import (
     VolatilityRegime,
 )
 from orchestrator.pipeline.runner import PipelineResult, PipelineRunner
-from orchestrator.risk.checker import RiskResult
 
 
 def _make_proposal(*, side=Side.LONG, risk_pct=1.0):
@@ -230,27 +229,18 @@ class TestPipelineRunner:
             assert call_kwargs["model_override"] == "anthropic/claude-opus-4-6"
 
 
-class TestPipelineRunnerWithRisk:
-    """Tests for M2 risk + paper engine integration."""
+class TestPipelineRunnerWithPaperEngine:
+    """Tests for paper engine integration (no risk checker)."""
 
     @pytest.mark.asyncio
-    async def test_approved_proposal_opens_position(self):
-        """When risk check passes, paper engine opens a position."""
-        risk_checker = MagicMock()
-        risk_checker.check.return_value = RiskResult(approved=True)
-
+    async def test_proposal_opens_position(self):
+        """Paper engine opens a position for valid proposals."""
         paper_engine = MagicMock()
-        paper_engine.open_positions_risk_pct = 0.0
-        paper_engine.paused = False
-        paper_engine.equity = 10000.0
         paper_engine.open_position.return_value = MagicMock(trade_id="t-001")
-        paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
-        paper_engine._trade_repo.count_consecutive_losses.return_value = 0
 
         snapshot = MagicMock(symbol="BTC/USDT:USDT", current_price=95000.0)
         runner, _ = _make_runner(
             snapshot=snapshot,
-            risk_checker=risk_checker,
             paper_engine=paper_engine,
         )
 
@@ -258,48 +248,13 @@ class TestPipelineRunnerWithRisk:
         assert result.status == "completed"
         paper_engine.open_position.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_risk_rejected_does_not_open_position(self):
-        risk_checker = MagicMock()
-        risk_checker.check.return_value = RiskResult(
-            approved=False, rule_violated="max_single_risk",
-            reason="too high", action="reject",
-        )
-
-        paper_engine = MagicMock()
-        paper_engine.open_positions_risk_pct = 0.0
-        paper_engine.paused = False
-        paper_engine.equity = 10000.0
-        paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
-        paper_engine._trade_repo.count_consecutive_losses.return_value = 0
-
-        snapshot = MagicMock(symbol="BTC/USDT:USDT", current_price=95000.0)
-        runner, _ = _make_runner(
-            snapshot=snapshot,
-            proposal_output=_make_proposal(side=Side.LONG, risk_pct=3.0),
-            risk_checker=risk_checker,
-            paper_engine=paper_engine,
-        )
-
-        result = await runner.execute("BTC/USDT:USDT")
-        assert result.status == "risk_rejected"
-        paper_engine.open_position.assert_not_called()
-
 
 class TestPipelineRunnerApproval:
     """Tests for M4 semi-auto approval flow."""
 
     @pytest.mark.asyncio
     async def test_approval_required_returns_pending(self):
-        risk_checker = MagicMock()
-        risk_checker.check.return_value = RiskResult(approved=True)
-
         paper_engine = MagicMock()
-        paper_engine.paused = False
-        paper_engine.open_positions_risk_pct = 0.0
-        paper_engine.equity = 10000.0
-        paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
-        paper_engine._trade_repo.count_consecutive_losses.return_value = 0
 
         approval_manager = MagicMock()
         approval_manager.create.return_value = MagicMock(
@@ -309,7 +264,6 @@ class TestPipelineRunnerApproval:
         snapshot = MagicMock(symbol="BTC/USDT:USDT", current_price=95000.0)
         runner, _ = _make_runner(
             snapshot=snapshot,
-            risk_checker=risk_checker,
             paper_engine=paper_engine,
             approval_manager=approval_manager,
         )
@@ -322,20 +276,12 @@ class TestPipelineRunnerApproval:
 
     @pytest.mark.asyncio
     async def test_no_approval_manager_auto_executes(self):
-        risk_checker = MagicMock()
-        risk_checker.check.return_value = RiskResult(approved=True)
-
         paper_engine = MagicMock()
-        paper_engine.paused = False
-        paper_engine.open_positions_risk_pct = 0.0
-        paper_engine.equity = 10000.0
-        paper_engine._trade_repo.get_daily_pnl.return_value = 0.0
-        paper_engine._trade_repo.count_consecutive_losses.return_value = 0
+        paper_engine.open_position.return_value = MagicMock(trade_id="t-001")
 
         snapshot = MagicMock(symbol="BTC/USDT:USDT", current_price=95000.0)
         runner, _ = _make_runner(
             snapshot=snapshot,
-            risk_checker=risk_checker,
             paper_engine=paper_engine,
         )
 

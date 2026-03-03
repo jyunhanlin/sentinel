@@ -340,7 +340,6 @@ class TestTradeProposalRepository:
             proposal_id="prop-001",
             run_id="run-001",
             proposal_json='{"side": "long"}',
-            risk_check_result="approved",
         )
         result = repo.get_latest_by_symbol("run-001")
         assert result is not None

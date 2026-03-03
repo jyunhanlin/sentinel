@@ -88,15 +88,11 @@ class TradeProposalRepository:
         proposal_id: str,
         run_id: str,
         proposal_json: str,
-        risk_check_result: str = "",
-        risk_check_reason: str = "",
     ) -> TradeProposalRecord:
         record = TradeProposalRecord(
             proposal_id=proposal_id,
             run_id=run_id,
             proposal_json=proposal_json,
-            risk_check_result=risk_check_result,
-            risk_check_reason=risk_check_reason,
         )
         self._session.add(record)
         self._session.commit()

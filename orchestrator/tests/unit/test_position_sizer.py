@@ -1,6 +1,6 @@
 import pytest
 
-from orchestrator.risk.position_sizer import MarginSizer, RiskPercentSizer
+from orchestrator.execution.position_sizer import MarginSizer, RiskPercentSizer
 
 
 class TestRiskPercentSizer:

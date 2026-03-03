@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from orchestrator.exchange.paper_engine import PaperEngine, Position
+from orchestrator.execution.position_sizer import RiskPercentSizer
 from orchestrator.models import EntryOrder, Side, TakeProfit, TradeProposal
-from orchestrator.risk.position_sizer import RiskPercentSizer
 from orchestrator.stats.calculator import StatsCalculator
 
 

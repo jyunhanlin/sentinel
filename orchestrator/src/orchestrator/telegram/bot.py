@@ -20,8 +20,6 @@ from orchestrator.telegram.formatters import (
     format_pending_approval,
     format_perf_report,
     format_proposal,
-    format_risk_pause,
-    format_risk_rejection,
     format_status,
     format_status_from_records,
     format_trade_report,
@@ -37,7 +35,6 @@ if TYPE_CHECKING:
     from orchestrator.llm.client import LLMClient
     from orchestrator.pipeline.runner import PipelineResult
     from orchestrator.pipeline.scheduler import PipelineScheduler
-    from orchestrator.risk.checker import RiskResult
     from orchestrator.storage.repository import (
         AccountSnapshotRepository,
         PaperTradeRepository,
@@ -253,7 +250,6 @@ class SentinelBot:
         BotCommand("coin", "Detailed analysis for a symbol"),
         BotCommand("history", "Recent trade records"),
         BotCommand("perf", "Performance report"),
-        BotCommand("resume", "Un-pause after risk pause"),
         BotCommand("help", "Show available commands"),
     ]
 
@@ -273,7 +269,6 @@ class SentinelBot:
         self._app.add_handler(CommandHandler("coin", self._coin_handler))
         self._app.add_handler(CommandHandler("run", self._run_handler))
         self._app.add_handler(CommandHandler("history", self._history_handler))
-        self._app.add_handler(CommandHandler("resume", self._resume_handler))
         self._app.add_handler(CommandHandler("perf", self._perf_handler))
         self._app.add_handler(CommandHandler("preview", self._preview_handler))
         self._app.add_handler(CallbackQueryHandler(self._callback_router))
@@ -299,20 +294,6 @@ class SentinelBot:
     async def push_to_admins_with_approval(self, result: PipelineResult) -> None:
         """Push a pipeline result to all admins, with approval buttons if applicable."""
         if self._app is None:
-            return
-
-        # Risk pause: send dedicated notification with resume button
-        if (
-            result.status == "risk_paused"
-            and result.risk_result
-            and result.proposal
-        ):
-            await self.push_risk_pause(
-                symbol=result.symbol,
-                side=result.proposal.side.value.upper(),
-                entry_price=result.proposal.stop_loss or 0.0,
-                risk_result=result.risk_result,
-            )
             return
 
         for chat_id in self.admin_chat_ids:
@@ -341,40 +322,6 @@ class SentinelBot:
         for chat_id in self.admin_chat_ids:
             sent = await self._app.bot.send_message(
                 chat_id=chat_id, text=msg, reply_markup=_translate_keyboard(),
-            )
-            self._msg_cache.store(sent.message_id, msg)
-
-    async def push_risk_rejection(
-        self, *, symbol: str, side: str, entry_price: float, risk_result: RiskResult
-    ) -> None:
-        """Push a risk rejection notification to all admin chats."""
-        if self._app is None:
-            return
-        msg = format_risk_rejection(
-            symbol=symbol, side=side, entry_price=entry_price, risk_result=risk_result
-        )
-        for chat_id in self.admin_chat_ids:
-            sent = await self._app.bot.send_message(
-                chat_id=chat_id, text=msg, reply_markup=_translate_keyboard(),
-            )
-            self._msg_cache.store(sent.message_id, msg)
-
-    async def push_risk_pause(
-        self, *, symbol: str, side: str, entry_price: float, risk_result: RiskResult
-    ) -> None:
-        """Push a risk pause notification with resume button to all admin chats."""
-        if self._app is None:
-            return
-        msg = format_risk_pause(
-            symbol=symbol, side=side, entry_price=entry_price, risk_result=risk_result
-        )
-        rows = [
-            [InlineKeyboardButton("\u25b6\ufe0f Resume Trading", callback_data="resume:confirm")],
-            [InlineKeyboardButton("Translate to zh-TW", callback_data="translate:zh")],
-        ]
-        for chat_id in self.admin_chat_ids:
-            sent = await self._app.bot.send_message(
-                chat_id=chat_id, text=msg, reply_markup=InlineKeyboardMarkup(rows),
             )
             self._msg_cache.store(sent.message_id, msg)
 
@@ -696,17 +643,6 @@ class SentinelBot:
                 text, reply_markup=InlineKeyboardMarkup(rows),
             )
 
-    async def _resume_handler(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
-        if not await self._check_admin(update):
-            return
-        if self._paper_engine is None:
-            await self._reply(update, "Paper trading not configured.")
-            return
-        self._paper_engine.set_paused(False)
-        await self._reply(update, "Pipeline resumed. Trading un-paused.")
-
     async def _perf_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
@@ -829,7 +765,6 @@ class SentinelBot:
         "add":              (2, "_handle_add"),
         "select_add":       (3, "_handle_select_add"),
         "confirm_add":      (3, "_handle_confirm_add"),
-        "resume":           (2, "_handle_resume"),
         "cancel":           (1, "_handle_cancel"),
         "history":          (3, "_handle_history_callback"),
         "adjust":           (2, "_handle_adjust"),
@@ -875,18 +810,6 @@ class SentinelBot:
 
     async def _handle_cancel(self, query: CallbackQuery, *_args: str) -> None:
         await _safe_callback_reply(query, text="Cancelled.")
-
-    async def _handle_resume(self, query: CallbackQuery, *_args: str) -> None:
-        if self._paper_engine is None:
-            await _safe_callback_reply(query, text="Paper trading not configured.")
-            return
-        if not self._paper_engine.paused:
-            await _safe_callback_reply(query, text="Trading is already active.")
-            return
-        self._paper_engine.set_paused(False)
-        await _safe_callback_reply(
-            query, text="\u25b6\ufe0f Trading resumed. New proposals will be executed."
-        )
 
     async def _handle_translate(self, query: CallbackQuery, lang: str) -> None:
         """Toggle message between English and Chinese."""
@@ -1038,7 +961,7 @@ class SentinelBot:
         if self._data_fetcher is not None:
             current_price = await self._data_fetcher.fetch_current_price(p.symbol)
 
-        from orchestrator.risk.position_sizer import MarginSizer
+        from orchestrator.execution.position_sizer import MarginSizer
 
         sizer = MarginSizer()
         qty = sizer.calculate_from_margin(

@@ -25,7 +25,7 @@ def test_create_app_components():
 
 
 def test_create_app_components_includes_m2():
-    """Verify M2 components (risk_checker, paper_engine) are in output."""
+    """Verify M2 components (paper_engine) are in output."""
     components = create_app_components(
         telegram_bot_token="test-token",
         telegram_admin_chat_ids=[123],
@@ -34,7 +34,6 @@ def test_create_app_components_includes_m2():
         anthropic_api_key="test-key",
     )
     assert "paper_engine" in components
-    assert "risk_checker" in components
 
 
 def test_create_app_components_includes_m4():

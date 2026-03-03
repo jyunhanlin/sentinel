@@ -11,7 +11,6 @@ def test_settings_loads_defaults():
     )
     assert settings.exchange_id == "binance"
     assert settings.pipeline_interval_minutes == 720
-    assert settings.max_single_risk_pct == 2.0
     assert settings.database_url == "sqlite:///data/sentinel.db"
 
 

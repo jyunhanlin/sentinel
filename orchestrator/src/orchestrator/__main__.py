@@ -22,13 +22,12 @@ from orchestrator.exchange.paper_engine import PaperEngine
 from orchestrator.execution.equity import PaperEquityProvider
 from orchestrator.execution.executor import LiveExecutor, PaperExecutor
 from orchestrator.execution.planner import ExecutionPlanner
+from orchestrator.execution.position_sizer import RiskPercentSizer
 from orchestrator.llm.backend import ClaudeCLIBackend, LiteLLMBackend
 from orchestrator.llm.client import LLMClient
 from orchestrator.logging import setup_logging
 from orchestrator.pipeline.runner import PipelineRunner
 from orchestrator.pipeline.scheduler import PipelineScheduler
-from orchestrator.risk.checker import RiskChecker
-from orchestrator.risk.position_sizer import RiskPercentSizer
 from orchestrator.stats.calculator import StatsCalculator
 from orchestrator.storage.database import create_db_engine, init_db
 from orchestrator.storage.repository import (
@@ -65,11 +64,6 @@ def create_app_components(
     llm_max_retries: int = 1,
     pipeline_symbols: list[str] | None = None,
     pipeline_interval_minutes: int = 15,
-    # Risk
-    max_single_risk_pct: float = 2.0,
-    max_total_exposure_pct: float = 20.0,
-    max_daily_loss_pct: float = 5.0,
-    max_consecutive_losses: int = 5,
     # Paper Trading
     paper_initial_equity: float = 10000.0,
     paper_taker_fee_rate: float = 0.0005,
@@ -130,14 +124,6 @@ def create_app_components(
     proposal_repo = TradeProposalRepository(session)
     paper_trade_repo = PaperTradeRepository(session)
     account_snapshot_repo = AccountSnapshotRepository(session)
-
-    # Risk
-    risk_checker = RiskChecker(
-        max_single_risk_pct=max_single_risk_pct,
-        max_total_exposure_pct=max_total_exposure_pct,
-        max_consecutive_losses=max_consecutive_losses,
-        max_daily_loss_pct=max_daily_loss_pct,
-    )
 
     # Stats
     stats_calculator = StatsCalculator()
@@ -209,7 +195,6 @@ def create_app_components(
         pipeline_repo=pipeline_repo,
         llm_call_repo=llm_call_repo,
         proposal_repo=proposal_repo,
-        risk_checker=risk_checker,
         paper_engine=paper_engine,
         approval_manager=approval_manager,
         execution_planner=execution_planner,
@@ -248,7 +233,6 @@ def create_app_components(
         "db_engine": db_engine,
         "scheduler": scheduler,
         "runner": runner,
-        "risk_checker": risk_checker,
         "paper_engine": paper_engine,
         "stats_calculator": stats_calculator,
         "snapshot_repo": account_snapshot_repo,
@@ -275,10 +259,6 @@ def _build_components(settings: Settings) -> dict[str, Any]:
         llm_max_retries=settings.llm_max_retries,
         pipeline_symbols=settings.pipeline_symbols,
         pipeline_interval_minutes=settings.pipeline_interval_minutes,
-        max_single_risk_pct=settings.max_single_risk_pct,
-        max_total_exposure_pct=settings.max_total_exposure_pct,
-        max_daily_loss_pct=settings.max_daily_loss_pct,
-        max_consecutive_losses=settings.max_consecutive_losses,
         paper_initial_equity=settings.paper_initial_equity,
         paper_taker_fee_rate=settings.paper_taker_fee_rate,
         paper_maker_fee_rate=settings.paper_maker_fee_rate,

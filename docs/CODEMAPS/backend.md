@@ -19,12 +19,11 @@ execute(symbol, timeframe, model_override) -> PipelineResult
   2. asyncio.gather: technical_short, technical_long, positioning, catalyst, correlation
   3. serial:         proposer(all_analyses) → TradeProposal
   4. aggregate_proposal(proposal, price) → validates SL placement
-  5. risk_checker.check(proposal, exposure, losses, daily_loss)
-  6. approval_manager.create() or paper_engine.open_position()
-  7. persist: pipeline_run + llm_calls + proposal
+  5. approval_manager.create() or paper_engine.open_position()
+  6. persist: pipeline_run + llm_calls + proposal
 ```
 
-**PipelineResult.status**: `completed | rejected | risk_rejected | risk_paused | pending_approval | failed`
+**PipelineResult.status**: `completed | rejected | pending_approval | failed`
 
 ### PipelineScheduler (`pipeline/scheduler.py`, 143L)
 
@@ -83,23 +82,12 @@ analyze(**kwargs) -> AgentResult[T]
 
 `validate_llm_output(raw, model_class)` → extracts JSON (handles ``` blocks) → Pydantic validates
 
-## Risk Management
+## Execution
 
-### RiskChecker (`risk/checker.py`, 100L)
-
-| Rule | Action |
-|------|--------|
-| Single risk % > limit | reject |
-| Total exposure % > limit | reject |
-| Consecutive losses >= limit | pause |
-| Daily loss % > limit | pause |
-
-### Position Sizers (`risk/position_sizer.py`, 39L)
+### Position Sizers (`execution/position_sizer.py`, 39L)
 
 - `RiskPercentSizer`: qty = (equity × risk%) / |entry − SL|
 - `MarginSizer`: qty = margin × leverage / entry
-
-## Execution
 
 ### OrderExecutor (`execution/executor.py`, 224L)
 

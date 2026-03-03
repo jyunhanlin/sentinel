@@ -22,7 +22,6 @@ from orchestrator.models import (
     TradeProposal,
 )
 from orchestrator.pipeline.aggregator import aggregate_proposal
-from orchestrator.risk.checker import RiskResult
 from orchestrator.storage.repository import (
     LLMCallRepository,
     PipelineRepository,
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
     from orchestrator.approval.manager import ApprovalManager
     from orchestrator.exchange.paper_engine import PaperEngine
     from orchestrator.execution.planner import ExecutionPlanner
-    from orchestrator.risk.checker import RiskChecker
 
 logger = structlog.get_logger(__name__)
 
@@ -41,7 +39,7 @@ logger = structlog.get_logger(__name__)
 class PipelineResult(BaseModel, frozen=True):
     run_id: str
     symbol: str
-    status: str  # completed, rejected, risk_rejected, risk_paused, pending_approval, failed
+    status: str  # completed, rejected, pending_approval, failed
     model_used: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     proposal: TradeProposal | None = None
@@ -53,7 +51,6 @@ class PipelineResult(BaseModel, frozen=True):
     positioning_degraded: bool = False
     catalyst_degraded: bool = False
     correlation_degraded: bool = False
-    risk_result: RiskResult | None = None
     close_results: list[CloseResult] = []
     technical_short: TechnicalAnalysis | None = None
     technical_long: TechnicalAnalysis | None = None
@@ -78,7 +75,6 @@ class PipelineRunner:
         pipeline_repo: PipelineRepository,
         llm_call_repo: LLMCallRepository,
         proposal_repo: TradeProposalRepository,
-        risk_checker: RiskChecker | None = None,
         paper_engine: PaperEngine | None = None,
         approval_manager: ApprovalManager | None = None,
         execution_planner: ExecutionPlanner | None = None,
@@ -94,7 +90,6 @@ class PipelineRunner:
         self._pipeline_repo = pipeline_repo
         self._llm_call_repo = llm_call_repo
         self._proposal_repo = proposal_repo
-        self._risk_checker = risk_checker
         self._paper_engine = paper_engine
         self._approval_manager = approval_manager
         self._execution_planner = execution_planner
@@ -190,8 +185,6 @@ class PipelineRunner:
                     proposal_id=aggregation.proposal.proposal_id,
                     run_id=run_id,
                     proposal_json=aggregation.proposal.model_dump_json(),
-                    risk_check_result="rejected",
-                    risk_check_reason=aggregation.rejection_reason,
                 )
                 self._pipeline_repo.update_run_status(run_id, "rejected")
                 logger.warning("pipeline_rejected", reason=aggregation.rejection_reason)
@@ -218,48 +211,27 @@ class PipelineRunner:
                     aggregation.proposal, snapshot.current_price,
                 )
 
-            # Step 5: Risk check
-            risk_result: RiskResult | None = None
-            if self._risk_checker is not None and self._paper_engine is not None:
-                from datetime import UTC, datetime
-
-                paper_trade_repo = self._paper_engine._trade_repo
-                daily_pnl = paper_trade_repo.get_daily_pnl(datetime.now(UTC).date())
-                daily_loss_pct = (
-                    abs(daily_pnl) / self._paper_engine.equity * 100
-                    if daily_pnl < 0
-                    else 0.0
-                )
-
-                risk_result = self._risk_checker.check(
-                    proposal=aggregation.proposal,
-                    open_positions_risk_pct=self._paper_engine.open_positions_risk_pct,
-                    consecutive_losses=paper_trade_repo.count_consecutive_losses(),
-                    daily_loss_pct=daily_loss_pct,
-                )
-
-                if not risk_result.approved:
-                    status = "risk_paused" if risk_result.action == "pause" else "risk_rejected"
-                    if risk_result.action == "pause":
-                        self._paper_engine.set_paused(True)
-
+            # Step 5: Open position or create pending approval
+            if aggregation.proposal.side != Side.FLAT:
+                if self._approval_manager is not None:
+                    # Semi-auto: create pending approval
+                    approval = self._approval_manager.create(
+                        proposal=aggregation.proposal,
+                        run_id=run_id,
+                        snapshot_price=snapshot.current_price,
+                        model_used=model_used,
+                    )
                     self._proposal_repo.save_proposal(
                         proposal_id=aggregation.proposal.proposal_id,
                         run_id=run_id,
                         proposal_json=aggregation.proposal.model_dump_json(),
-                        risk_check_result=status,
-                        risk_check_reason=risk_result.reason,
                     )
-                    self._pipeline_repo.update_run_status(run_id, status)
-                    logger.warning(
-                        "pipeline_risk_blocked", status=status, rule=risk_result.rule_violated
-                    )
-
+                    self._pipeline_repo.update_run_status(run_id, "pending_approval")
+                    logger.info("pipeline_pending_approval", approval_id=approval.approval_id)
                     return self._build_result(
-                        run_id=run_id, symbol=symbol, status=status,
+                        run_id=run_id, symbol=symbol, status="pending_approval",
                         model_used=model_used, proposal=aggregation.proposal,
-                        rejection_reason=risk_result.reason,
-                        risk_result=risk_result,
+                        approval_id=approval.approval_id,
                         proposer_result=proposer_result,
                         tech_short_result=tech_short_result,
                         tech_long_result=tech_long_result,
@@ -268,50 +240,17 @@ class PipelineRunner:
                         correlation_result=correlation_result,
                         execution_plan=execution_plan,
                     )
+                elif self._paper_engine is not None:
+                    # Auto mode: execute immediately
+                    self._paper_engine.open_position(
+                        aggregation.proposal, current_price=snapshot.current_price
+                    )
 
-                # Step 6: Open position or create pending approval
-                if aggregation.proposal.side != Side.FLAT:
-                    if self._approval_manager is not None:
-                        # Semi-auto: create pending approval
-                        approval = self._approval_manager.create(
-                            proposal=aggregation.proposal,
-                            run_id=run_id,
-                            snapshot_price=snapshot.current_price,
-                            model_used=model_used,
-                        )
-                        self._proposal_repo.save_proposal(
-                            proposal_id=aggregation.proposal.proposal_id,
-                            run_id=run_id,
-                            proposal_json=aggregation.proposal.model_dump_json(),
-                            risk_check_result="pending_approval",
-                        )
-                        self._pipeline_repo.update_run_status(run_id, "pending_approval")
-                        logger.info("pipeline_pending_approval", approval_id=approval.approval_id)
-                        return self._build_result(
-                            run_id=run_id, symbol=symbol, status="pending_approval",
-                            model_used=model_used, proposal=aggregation.proposal,
-                            risk_result=risk_result,
-                            approval_id=approval.approval_id,
-                            proposer_result=proposer_result,
-                            tech_short_result=tech_short_result,
-                            tech_long_result=tech_long_result,
-                            positioning_result=positioning_result,
-                            catalyst_result=catalyst_result,
-                            correlation_result=correlation_result,
-                            execution_plan=execution_plan,
-                        )
-                    else:
-                        # Auto mode: execute immediately
-                        self._paper_engine.open_position(
-                            aggregation.proposal, current_price=snapshot.current_price
-                        )
-
-            # Step 7: Save approved proposal and return
+            # Step 6: Save approved proposal and return
             self._proposal_repo.save_proposal(
                 proposal_id=aggregation.proposal.proposal_id,
                 run_id=run_id,
                 proposal_json=aggregation.proposal.model_dump_json(),
-                risk_check_result="approved",
             )
             self._pipeline_repo.update_run_status(run_id, "completed")
             logger.info("pipeline_completed", side=aggregation.proposal.side)
@@ -319,7 +258,6 @@ class PipelineRunner:
             return self._build_result(
                 run_id=run_id, symbol=symbol, status="completed",
                 model_used=model_used, proposal=aggregation.proposal,
-                risk_result=risk_result,
                 proposer_result=proposer_result,
                 tech_short_result=tech_short_result,
                 tech_long_result=tech_long_result,
@@ -356,7 +294,6 @@ class PipelineRunner:
         proposal: TradeProposal | None = None,
         rejection_reason: str = "",
         approval_id: str | None = None,
-        risk_result: RiskResult | None = None,
         proposer_result: AgentResult[TradeProposal] | None = None,
         tech_short_result: AgentResult[TechnicalAnalysis] | None = None,
         tech_long_result: AgentResult[TechnicalAnalysis] | None = None,
@@ -379,7 +316,6 @@ class PipelineRunner:
             positioning_degraded=positioning_result.degraded if positioning_result else False,
             catalyst_degraded=catalyst_result.degraded if catalyst_result else False,
             correlation_degraded=correlation_result.degraded if correlation_result else False,
-            risk_result=risk_result,
             technical_short=tech_short_result.output if tech_short_result else None,
             technical_long=tech_long_result.output if tech_long_result else None,
             positioning=positioning_result.output if positioning_result else None,

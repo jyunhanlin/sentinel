@@ -38,8 +38,6 @@ class TradeProposalRecord(SQLModel, table=True):
     proposal_id: str = Field(unique=True, index=True)
     run_id: str = Field(index=True)
     proposal_json: str  # Full JSON
-    risk_check_result: str = ""  # approved / rejected
-    risk_check_reason: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
