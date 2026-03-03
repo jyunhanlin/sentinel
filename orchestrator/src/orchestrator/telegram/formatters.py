@@ -119,8 +119,8 @@ def format_proposal(result: PipelineResult) -> str:
     if is_flat:
         lines = [
             f"{emoji} FLAT {p.symbol}",
-            f"Confidence: {p.confidence:.0%} | {p.time_horizon}",
-            f"\n{p.rationale}",
+            f"\U0001f4ca Confidence: {p.confidence:.0%} \u00b7 {p.time_horizon}",
+            f"\n\U0001f4a1 {p.rationale}",
         ]
     elif result.status == "rejected":
         lines = [
@@ -134,7 +134,7 @@ def format_proposal(result: PipelineResult) -> str:
             f"{emoji} {p.side.value.upper()} {p.symbol}",
             time_str,
             "",
-            f"\u25b6 Entry: {p.entry.type}"
+            f"\U0001f3af Entry: {p.entry.type}"
             + (f" @ ${p.entry.price:,.1f}" if p.entry.price else ""),
         ]
         if p.stop_loss is not None:
@@ -146,10 +146,10 @@ def format_proposal(result: PipelineResult) -> str:
         lines.extend(_format_tp_lines(p.take_profit, entry_price))
         lines.append(
             f"\n{p.suggested_leverage}x"
-            f" \u00b7 Confidence: {p.confidence:.0%}"
+            f" \u00b7 \U0001f4ca Confidence: {p.confidence:.0%}"
             f" \u00b7 {p.time_horizon}"
         )
-        lines.append(f"\n{p.rationale}")
+        lines.append(f"\n\U0001f4a1 {p.rationale}")
 
     if result.model_used:
         lines.append(f"\nModel: {result.model_used.split('/')[-1]}")
