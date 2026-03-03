@@ -478,13 +478,12 @@ class SentinelBot:
                     keyboard = InlineKeyboardMarkup([
                         [
                             InlineKeyboardButton(
-                                "Close", callback_data=f"close:{pos.trade_id}",
+                                "\u2699\ufe0f \u7ba1\u7406",
+                                callback_data=f"pos_manage:{pos.trade_id}",
                             ),
                             InlineKeyboardButton(
-                                "Reduce", callback_data=f"reduce:{pos.trade_id}",
-                            ),
-                            InlineKeyboardButton(
-                                "Add", callback_data=f"add:{pos.trade_id}",
+                                "Close",
+                                callback_data=f"close:{pos.trade_id}",
                             ),
                         ],
                     ])
@@ -828,6 +827,14 @@ class SentinelBot:
         "adj_qty":          (2, "_handle_adjust_qty"),
         "adj_confirm":      (2, "_handle_adjust_confirm"),
         "adj_cancel":       (2, "_handle_adjust_cancel"),
+        "pos_manage":       (2, "_handle_pos_manage"),
+        "pos_sl":           (2, "_handle_pos_move_sl"),
+        "pos_tp":           (2, "_handle_pos_adjust_tp"),
+        "pos_add":          (2, "_handle_pos_add"),
+        "pos_reduce":       (2, "_handle_pos_reduce"),
+        "pos_close":        (2, "_handle_pos_close"),
+        "pos_confirm_close": (2, "_handle_pos_confirm_close"),
+        "pos_back":         (2, "_handle_pos_back"),
     }
 
     async def _callback_router(
@@ -1713,6 +1720,179 @@ class SentinelBot:
                 self._msg_cache.store(query.message.message_id, text)
         except Exception as e:
             await query.answer(f"Error: {e}")
+
+    # --- Position management handlers ---
+
+    async def _handle_pos_manage(
+        self, query: CallbackQuery, trade_id: str, *_args: str,
+    ) -> None:
+        """Show position management menu."""
+        if self._paper_engine is None:
+            await query.answer("Not configured")
+            return
+        try:
+            pos = self._paper_engine._find_position(trade_id)
+        except ValueError:
+            await query.answer("Position not found")
+            return
+
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    "\u79fb SL",
+                    callback_data=f"pos_sl:{trade_id}",
+                ),
+                InlineKeyboardButton(
+                    "\u8abf TP",
+                    callback_data=f"pos_tp:{trade_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "\u52a0\u5009",
+                    callback_data=f"pos_add:{trade_id}",
+                ),
+                InlineKeyboardButton(
+                    "\u6e1b\u5009",
+                    callback_data=f"pos_reduce:{trade_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "\u5e73\u5009",
+                    callback_data=f"pos_close:{trade_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "\u2b05\ufe0f \u8fd4\u56de",
+                    callback_data=f"pos_back:{trade_id}",
+                ),
+            ],
+        ]
+        side_str = (
+            pos.side.value.upper()
+            if hasattr(pos.side, "value")
+            else str(pos.side).upper()
+        )
+        text = (
+            f"\u2699\ufe0f {pos.symbol} {side_str}"
+            f" {pos.leverage}x\n"
+            f"Entry: ${pos.entry_price:,.1f}"
+            f" | Qty: {pos.quantity:.4f}\n"
+            f"SL: ${pos.stop_loss:,.1f}"
+        )
+        await _safe_callback_reply(
+            query, text=text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+
+    async def _handle_pos_move_sl(
+        self, query: CallbackQuery, trade_id: str, *_args: str,
+    ) -> None:
+        """Prompt user to enter new SL price."""
+        await _safe_callback_reply(
+            query,
+            text=(
+                "\u26d4 \u8f38\u5165\u65b0\u7684 Stop Loss"
+                " \u50f9\u683c\uff1a\n"
+                "\u4f8b: 92500\n\n"
+                "\u76f4\u63a5\u8f38\u5165\u6578\u5b57\u5373\u53ef\u3002"
+            ),
+        )
+        adj = self._adjustments.setdefault(
+            f"pos_{trade_id}", {},
+        )
+        adj["_awaiting"] = "pos_sl"
+        adj["_trade_id"] = trade_id
+
+    async def _handle_pos_adjust_tp(
+        self, query: CallbackQuery, trade_id: str, *_args: str,
+    ) -> None:
+        """Prompt user to enter new TP levels."""
+        await _safe_callback_reply(
+            query,
+            text=(
+                "\u2705 \u8f38\u5165\u65b0\u7684"
+                " Take Profit \u50f9\u683c\uff1a\n"
+                "\u4f8b: 97000 50%, 99000 100%\n\n"
+                "\u683c\u5f0f: \u50f9\u683c"
+                " \u5e73\u5009\u6bd4\u4f8b, "
+                "\u50f9\u683c \u5e73\u5009\u6bd4\u4f8b"
+            ),
+        )
+        adj = self._adjustments.setdefault(
+            f"pos_{trade_id}", {},
+        )
+        adj["_awaiting"] = "pos_tp"
+        adj["_trade_id"] = trade_id
+
+    async def _handle_pos_add(
+        self, query: CallbackQuery, trade_id: str, *_args: str,
+    ) -> None:
+        """Route to existing add handler."""
+        await self._handle_add(query, trade_id)
+
+    async def _handle_pos_reduce(
+        self, query: CallbackQuery, trade_id: str, *_args: str,
+    ) -> None:
+        """Route to existing reduce handler."""
+        await self._handle_reduce(query, trade_id)
+
+    async def _handle_pos_close(
+        self, query: CallbackQuery, trade_id: str, *_args: str,
+    ) -> None:
+        """Show close confirmation."""
+        await self._handle_close(query, trade_id)
+
+    async def _handle_pos_confirm_close(
+        self, query: CallbackQuery, trade_id: str, *_args: str,
+    ) -> None:
+        """Route to existing confirm close handler."""
+        await self._handle_confirm_close(query, trade_id)
+
+    async def _handle_pos_back(
+        self, query: CallbackQuery, trade_id: str, *_args: str,
+    ) -> None:
+        """Return to position card view."""
+        if self._paper_engine is None or self._data_fetcher is None:
+            await query.answer("Not configured")
+            return
+        try:
+            pos = self._paper_engine._find_position(trade_id)
+            current_price = (
+                await self._data_fetcher.fetch_current_price(
+                    pos.symbol,
+                )
+            )
+            info = self._paper_engine.get_position_with_pnl(
+                trade_id=trade_id, current_price=current_price,
+            )
+        except (ValueError, Exception):
+            await query.answer("Position not found")
+            return
+
+        from orchestrator.telegram.formatters import (
+            format_position_card,
+        )
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "\u2699\ufe0f \u7ba1\u7406",
+                    callback_data=f"pos_manage:{trade_id}",
+                ),
+                InlineKeyboardButton(
+                    "Close",
+                    callback_data=f"close:{trade_id}",
+                ),
+            ],
+        ])
+        await _safe_callback_reply(
+            query,
+            text=format_position_card(info),
+            reply_markup=keyboard,
+        )
 
     async def _handle_history_callback(
         self, query: CallbackQuery, action: str, value: str, *extra: str,

@@ -410,6 +410,26 @@ class PaperEngine:
             new_pos if p.trade_id == trade_id else p for p in self._positions
         ]
 
+    def update_sl(self, *, trade_id: str, new_sl: float) -> Position:
+        """Update stop loss for a position. Returns the updated position."""
+        pos = self._find_position(trade_id)
+        updated = pos.model_copy(update={"stop_loss": new_sl})
+        self._replace_position(trade_id, updated)
+        logger.info("position_sl_updated", trade_id=trade_id, new_sl=new_sl)
+        return updated
+
+    def update_tp(
+        self, *, trade_id: str, new_tp: list[TakeProfit],
+    ) -> Position:
+        """Update take profit levels for a position. Returns the updated position."""
+        pos = self._find_position(trade_id)
+        updated = pos.model_copy(
+            update={"take_profit": new_tp, "triggered_tp_indices": []},
+        )
+        self._replace_position(trade_id, updated)
+        logger.info("position_tp_updated", trade_id=trade_id, levels=len(new_tp))
+        return updated
+
     def check_sl_tp(self, *, symbol: str, current_price: float) -> list[CloseResult]:
         closed: list[CloseResult] = []
         remaining: list[Position] = []

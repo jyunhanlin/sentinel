@@ -581,3 +581,51 @@ class TestPartialTakeProfit:
         assert len(results) == 1
         assert results[0].partial is True
         assert results[0].quantity == pytest.approx(original_qty * 0.5, rel=0.01)
+
+
+class TestUpdateSlTp:
+    def _make_engine(self):
+        return PaperEngine(
+            initial_equity=10000.0,
+            taker_fee_rate=0.0005,
+            position_sizer=RiskPercentSizer(),
+            trade_repo=MagicMock(),
+            snapshot_repo=MagicMock(),
+        )
+
+    def test_update_sl(self):
+        engine = self._make_engine()
+        engine.open_position(
+            _make_proposal(stop_loss=93000.0), current_price=95000.0,
+        )
+        pos = engine.get_open_positions()[0]
+        updated = engine.update_sl(
+            trade_id=pos.trade_id, new_sl=92000.0,
+        )
+        assert updated.stop_loss == 92000.0
+        assert updated.trade_id == pos.trade_id
+        # Original position should be replaced
+        current = engine.get_open_positions()[0]
+        assert current.stop_loss == 92000.0
+
+    def test_update_tp(self):
+        engine = self._make_engine()
+        engine.open_position(
+            _make_proposal(), current_price=95000.0,
+        )
+        pos = engine.get_open_positions()[0]
+        new_tps = [
+            TakeProfit(price=98000.0, close_pct=50),
+            TakeProfit(price=100000.0, close_pct=100),
+        ]
+        updated = engine.update_tp(
+            trade_id=pos.trade_id, new_tp=new_tps,
+        )
+        assert len(updated.take_profit) == 2
+        assert updated.take_profit[0].price == 98000.0
+        assert updated.triggered_tp_indices == []
+
+    def test_update_sl_not_found_raises(self):
+        engine = self._make_engine()
+        with pytest.raises(ValueError, match="not found"):
+            engine.update_sl(trade_id="nonexistent", new_sl=92000.0)
