@@ -18,7 +18,7 @@ class TestFormatTradeEvaluation:
             close_reason="tp", confidence=75, pnl=100.0,
         )
         result = format_trade_evaluation(ev)
-        assert "✅" in result or "Direction correct" in result.lower() or "correct" in result.lower()
+        assert "correct" in result.lower()
         assert "0.3" in result
         assert "75" in result
 

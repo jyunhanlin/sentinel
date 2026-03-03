@@ -4,11 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from orchestrator.stats.evaluator import (
-    ConfidenceBucket,
     EvaluationReport,
-    PeriodStats,
     PipelineEvaluator,
-    SymbolStats,
     TradeEvaluation,
 )
 
@@ -195,8 +192,12 @@ class TestEvaluate:
 
     def test_evaluate_by_symbol(self):
         trades = [
-            _make_trade_record(trade_id="t-1", proposal_id="p-1", symbol="BTC/USDT:USDT", pnl=100.0),
-            _make_trade_record(trade_id="t-2", proposal_id="p-2", symbol="ETH/USDT:USDT", pnl=-50.0),
+            _make_trade_record(
+                trade_id="t-1", proposal_id="p-1", symbol="BTC/USDT:USDT", pnl=100.0,
+            ),
+            _make_trade_record(
+                trade_id="t-2", proposal_id="p-2", symbol="ETH/USDT:USDT", pnl=-50.0,
+            ),
         ]
         proposals = [
             _make_proposal_record(proposal_id="p-1"),
@@ -258,8 +259,12 @@ class TestEvaluate:
 
     def test_evaluate_symbol_filter(self):
         trades = [
-            _make_trade_record(trade_id="t-1", proposal_id="p-1", symbol="BTC/USDT:USDT", pnl=100.0),
-            _make_trade_record(trade_id="t-2", proposal_id="p-2", symbol="ETH/USDT:USDT", pnl=-50.0),
+            _make_trade_record(
+                trade_id="t-1", proposal_id="p-1", symbol="BTC/USDT:USDT", pnl=100.0,
+            ),
+            _make_trade_record(
+                trade_id="t-2", proposal_id="p-2", symbol="ETH/USDT:USDT", pnl=-50.0,
+            ),
         ]
         proposals = [
             _make_proposal_record(proposal_id="p-1"),

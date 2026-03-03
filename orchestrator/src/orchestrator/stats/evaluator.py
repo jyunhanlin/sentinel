@@ -156,7 +156,9 @@ class PipelineEvaluator:
             )
 
         direction_correct = sum(1 for e in evaluations if e.direction_correct)
-        deviations = [e.entry_deviation_pct for e in evaluations if e.entry_deviation_pct is not None]
+        deviations = [
+            e.entry_deviation_pct for e in evaluations if e.entry_deviation_pct is not None
+        ]
         sl_count = sum(1 for e in evaluations if e.close_reason == "sl")
         tp_count = sum(1 for e in evaluations if e.close_reason == "tp")
         liq_count = sum(1 for e in evaluations if e.close_reason == "liquidation")
