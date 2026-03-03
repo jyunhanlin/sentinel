@@ -98,7 +98,7 @@ def test_format_lower_section_contains_analysis():
         },
         rationale="BTC breaking above resistance with low funding.",
     )
-    assert "分析摘要" in text
+    assert "Analysis" in text
     assert "Technical" in text
     assert "Positioning" in text
     assert "Catalyst" in text
@@ -113,8 +113,8 @@ def test_format_without_analysis_shows_upper_only():
         time_horizon="4h",
     )
     # Should not crash, just no lower section
-    assert "開倉建議" in text
-    assert "分析摘要" not in text
+    assert "LONG" in text
+    assert "Analysis" not in text
 
 
 def test_format_short_side():

@@ -169,27 +169,45 @@ def _extract_analysis_summary(result: Any) -> dict[str, str]:
 
     pos = getattr(result, "positioning", None)
     if pos is not None:
+        funding_trend = getattr(pos, "funding_trend", None)
+        oi_chg = getattr(pos, "oi_change_pct", None)
         parts_p: list[str] = []
-        funding = getattr(pos, "funding_rate", None)
-        if funding is not None:
-            parts_p.append(f"Funding {funding:+.4f}%")
-        oi_chg = getattr(pos, "open_interest_change_pct", None)
+        if funding_trend:
+            parts_p.append(f"Funding {funding_trend}")
         if oi_chg is not None:
             parts_p.append(f"OI {oi_chg:+.1f}%")
         if parts_p:
-            summary["positioning"] = "\n".join(parts_p)
+            summary["positioning"] = ", ".join(parts_p)
 
     cat = getattr(result, "catalyst", None)
     if cat is not None:
-        cat_summary = getattr(cat, "summary", None)
-        if cat_summary:
-            summary["catalyst"] = str(cat_summary)[:100]
+        recommendation = getattr(cat, "recommendation", None)
+        risk_level = getattr(cat, "risk_level", None)
+        upcoming = getattr(cat, "upcoming_events", [])
+        parts_c: list[str] = []
+        if recommendation:
+            parts_c.append(recommendation)
+        if risk_level:
+            parts_c.append(f"{risk_level} risk")
+        if upcoming:
+            parts_c.append(f"{len(upcoming)} upcoming")
+        if parts_c:
+            summary["catalyst"] = ", ".join(parts_c)
 
     corr = getattr(result, "correlation", None)
     if corr is not None:
-        corr_summary = getattr(corr, "summary", None)
-        if corr_summary:
-            summary["correlation"] = str(corr_summary)[:100]
+        dxy = getattr(corr, "dxy_trend", None)
+        sp500 = getattr(corr, "sp500_regime", None)
+        alignment = getattr(corr, "cross_market_alignment", None)
+        parts_r: list[str] = []
+        if dxy:
+            parts_r.append(f"DXY {dxy}")
+        if sp500:
+            parts_r.append(f"S&P {sp500.replace('_', '-')}")
+        if alignment:
+            parts_r.append(alignment)
+        if parts_r:
+            summary["correlation"] = ", ".join(parts_r)
 
     return summary
 
@@ -263,6 +281,7 @@ class SentinelBot:
         self._app.add_handler(CommandHandler("resume", self._resume_handler))
         self._app.add_handler(CommandHandler("perf", self._perf_handler))
         self._app.add_handler(CommandHandler("eval", self._eval_handler))
+        self._app.add_handler(CommandHandler("preview", self._preview_handler))
         self._app.add_handler(CallbackQueryHandler(self._callback_router))
         return self._app
 
@@ -754,15 +773,15 @@ class SentinelBot:
             keyboard = InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton(
-                        "\U0001f680 \u958b\u5009",
+                        "\U0001f680 Execute",
                         callback_data=f"approve:{approval.approval_id}",
                     ),
                     InlineKeyboardButton(
-                        "\u270f\ufe0f \u8abf\u6574",
+                        "\u270f\ufe0f Adjust",
                         callback_data=f"adjust:{approval.approval_id}",
                     ),
                     InlineKeyboardButton(
-                        "\u274c \u8df3\u904e",
+                        "\u274c Skip",
                         callback_data=f"reject:{approval.approval_id}",
                     ),
                 ],
@@ -1466,6 +1485,281 @@ class SentinelBot:
             if not cr["passed"]
         ]
         await self._reply(update, format_eval_report(report_dict))
+
+    # --- Preview handler (hidden debug command) ---
+
+    async def _preview_handler(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        """Hidden command to preview message formats with mock data."""
+        if not await self._check_admin(update):
+            return
+
+        args = context.args
+        preview_type = args[0].lower() if args else "plan"
+
+        from datetime import UTC, datetime, timedelta
+
+        from orchestrator.execution.plan import ExecutionPlan, OrderInstruction
+        from orchestrator.models import (
+            CatalystEvent,
+            CatalystReport,
+            CorrelationAnalysis,
+            EntryOrder,
+            KeyLevel,
+            Momentum,
+            PositioningAnalysis,
+            Side,
+            TakeProfit,
+            TechnicalAnalysis,
+            TradeProposal,
+            Trend,
+            VolatilityRegime,
+        )
+        from orchestrator.pipeline.runner import PipelineResult
+
+        _proposal = TradeProposal(
+            proposal_id="preview-001",
+            symbol="ETH/USDT:USDT",
+            side=Side.LONG,
+            entry=EntryOrder(type="limit", price=2020.0),
+            position_size_risk_pct=0.5,
+            stop_loss=1975.0,
+            take_profit=[
+                TakeProfit(price=2055.0, close_pct=50),
+                TakeProfit(price=2089.0, close_pct=50),
+            ],
+            suggested_leverage=5,
+            time_horizon="4h",
+            confidence=0.40,
+            invalid_if=["price drops below 1950"],
+            rationale=(
+                "Short-term uptrend (ADX 32) with bullish momentum. "
+                "Funding stable and OI expanding — room to run. "
+                "DXY weakening provides macro tailwind."
+            ),
+        )
+
+        _tech = TechnicalAnalysis(
+            label="short_term",
+            trend=Trend.UP,
+            trend_strength=32.0,
+            volatility_regime=VolatilityRegime.MEDIUM,
+            volatility_pct=2.8,
+            momentum=Momentum.BULLISH,
+            rsi=58.0,
+            key_levels=[
+                KeyLevel(type="support", price=2020.0),
+                KeyLevel(type="support", price=2000.0),
+                KeyLevel(type="resistance", price=2055.0),
+                KeyLevel(type="resistance", price=2089.0),
+            ],
+            risk_flags=[],
+        )
+
+        _positioning = PositioningAnalysis(
+            funding_trend="stable",
+            funding_extreme=False,
+            oi_change_pct=3.2,
+            retail_bias="long",
+            smart_money_bias="long",
+            squeeze_risk="none",
+            liquidity_assessment="normal",
+            risk_flags=[],
+            confidence=0.65,
+        )
+
+        _catalyst = CatalystReport(
+            upcoming_events=[
+                CatalystEvent(
+                    event="FOMC Minutes",
+                    time="2026-03-05T18:00:00Z",
+                    impact="high",
+                    direction_bias="uncertain",
+                ),
+                CatalystEvent(
+                    event="ETH Dencun Upgrade",
+                    time="2026-03-08T00:00:00Z",
+                    impact="medium",
+                    direction_bias="bullish",
+                ),
+            ],
+            active_events=[],
+            risk_level="low",
+            recommendation="proceed",
+            confidence=0.70,
+        )
+
+        _correlation = CorrelationAnalysis(
+            dxy_trend="weakening",
+            dxy_impact="tailwind",
+            sp500_regime="risk_on",
+            btc_dominance_trend="falling",
+            cross_market_alignment="favorable",
+            risk_flags=[],
+            confidence=0.72,
+        )
+
+        _exec_plan = ExecutionPlan(
+            proposal_id="preview-001",
+            symbol="ETH/USDT:USDT",
+            side="long",
+            entry_order=OrderInstruction(
+                symbol="ETH/USDT:USDT",
+                side="buy",
+                order_type="limit",
+                quantity=1.2376,
+                price=2020.0,
+            ),
+            sl_order=OrderInstruction(
+                symbol="ETH/USDT:USDT",
+                side="sell",
+                order_type="market",
+                quantity=1.2376,
+                stop_price=1975.0,
+                reduce_only=True,
+            ),
+            tp_orders=[
+                OrderInstruction(
+                    symbol="ETH/USDT:USDT",
+                    side="sell",
+                    order_type="market",
+                    quantity=0.6188,
+                    stop_price=2055.0,
+                    reduce_only=True,
+                ),
+                OrderInstruction(
+                    symbol="ETH/USDT:USDT",
+                    side="sell",
+                    order_type="market",
+                    quantity=0.6188,
+                    stop_price=2089.0,
+                    reduce_only=True,
+                ),
+            ],
+            margin_mode="isolated",
+            leverage=5,
+            quantity=1.2376,
+            entry_price=2020.0,
+            notional_value=2500.0,
+            margin_required=500.0,
+            liquidation_price=1616.0,
+            estimated_fees=1.25,
+            max_loss=56.0,
+            max_loss_pct=0.5,
+            tp_profits=[22.0, 43.0],
+            risk_reward_ratio=1.5,
+            equity_snapshot=10_000.0,
+        )
+
+        now = datetime.now(UTC)
+
+        _pipeline_result = PipelineResult(
+            run_id="preview-run",
+            symbol="ETH/USDT:USDT",
+            status="pending_approval",
+            model_used="anthropic/claude-sonnet-4-6",
+            created_at=now,
+            proposal=_proposal,
+            technical_short=_tech,
+            positioning=_positioning,
+            catalyst=_catalyst,
+            correlation=_correlation,
+            execution_plan=_exec_plan,
+        )
+
+        if preview_type == "plan":
+            analysis_summary = _extract_analysis_summary(_pipeline_result)
+            text = format_execution_plan(
+                plan=_exec_plan,
+                confidence=_proposal.confidence,
+                time_horizon=_proposal.time_horizon,
+                analysis_summary=analysis_summary or None,
+                rationale=_proposal.rationale,
+                model_used="anthropic/claude-sonnet-4-6",
+                expires_minutes=30,
+            )
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "\U0001f680 Execute",
+                        callback_data="cancel:0",
+                    ),
+                    InlineKeyboardButton(
+                        "\u270f\ufe0f Adjust",
+                        callback_data="cancel:0",
+                    ),
+                    InlineKeyboardButton(
+                        "\u274c Skip",
+                        callback_data="cancel:0",
+                    ),
+                ],
+                [InlineKeyboardButton(
+                    "Translate to zh-TW", callback_data="cancel:0",
+                )],
+            ])
+            if update.message:
+                await update.message.reply_text(text, reply_markup=keyboard)
+
+        elif preview_type == "flat":
+            flat_proposal = _proposal.model_copy(update={
+                "side": Side.FLAT,
+                "stop_loss": None,
+                "take_profit": [],
+                "rationale": "Market ranging with no clear directional bias.",
+            })
+            flat_result = _pipeline_result.model_copy(update={
+                "status": "completed",
+                "proposal": flat_proposal,
+            })
+            await self._reply(update, format_proposal(flat_result))
+
+        elif preview_type == "rejected":
+            rejected_result = _pipeline_result.model_copy(update={
+                "status": "rejected",
+                "rejection_reason": "Risk/reward below threshold (0.8 < 1.0).",
+            })
+            await self._reply(update, format_proposal(rejected_result))
+
+        elif preview_type == "approval":
+            from orchestrator.approval.manager import PendingApproval
+
+            approval = PendingApproval(
+                approval_id="preview-appr",
+                proposal=_proposal,
+                run_id="preview-run",
+                snapshot_price=2020.0,
+                created_at=now,
+                expires_at=now + timedelta(minutes=30),
+                model_used="anthropic/claude-sonnet-4-6",
+            )
+            text = format_pending_approval(
+                approval, technical_short=_tech,
+            )
+            if update.message:
+                await update.message.reply_text(text)
+
+        elif preview_type == "status":
+            completed = _pipeline_result.model_copy(update={
+                "status": "completed",
+            })
+            rejected = _pipeline_result.model_copy(update={
+                "status": "rejected",
+                "symbol": "BTC/USDT:USDT",
+                "rejection_reason": "Confidence below threshold.",
+                "proposal": _proposal.model_copy(update={
+                    "symbol": "BTC/USDT:USDT",
+                }),
+            })
+            await self._reply(
+                update, format_status([completed, rejected]),
+            )
+
+        else:
+            await self._reply(
+                update,
+                "Usage: /preview [plan|flat|rejected|approval|status]",
+            )
 
     # --- Position operation handlers ---
 

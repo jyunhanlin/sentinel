@@ -740,12 +740,8 @@ def format_execution_plan(
     tp_profits: list[float] = plan.tp_profits  # type: ignore[attr-defined]
     order_type: str = plan.entry_order.order_type  # type: ignore[attr-defined]
 
-    # --- Upper section ---
-    bar = "\u2501" * 3
-    long_bar = "\u2501" * 15
+    # --- Title ---
     lines = [
-        f"{bar} \u958b\u5009\u5efa\u8b70 {long_bar}",
-        "",
         f"{emoji} {symbol} {side_str} \u00b7 Confidence {confidence:.0%}",
         "",
     ]
@@ -754,12 +750,12 @@ def format_execution_plan(
     entry_str = f"${entry_price:,.1f} ({order_type})"
     if order_type == "limit" and plan.entry_order.price is not None:  # type: ignore[attr-defined]
         entry_str = f"${plan.entry_order.price:,.1f} (limit)"  # type: ignore[attr-defined]
-    lines.append(f"\u25b6 Entry:     {entry_str}")
-    lines.append(f"  Quantity:  {quantity:.4f} (${notional:,.0f})")
+    lines.append(f"\U0001f3af Entry:     {entry_str}")
+    lines.append(f"\U0001f4e6 Quantity:  {quantity:.4f} (${notional:,.0f})")
     lines.append(
-        f"  Margin:    ${margin:,.0f} \u00b7 {leverage}x {margin_mode}",
+        f"\U0001f4b5 Margin:    ${margin:,.0f} \u00b7 {leverage}x {margin_mode}",
     )
-    lines.append(f"  Liq:       ${liq_price:,.1f}")
+    lines.append(f"\U0001f480 Liq:       ${liq_price:,.1f}")
 
     # SL
     sl_order = plan.sl_order  # type: ignore[attr-defined]
@@ -785,18 +781,18 @@ def format_execution_plan(
 
     # Loss / Profit / R:R
     lines.append("")
-    lines.append(f"\u26a0\ufe0f \u6700\u5927\u8667\u640d: ${max_loss:,.0f} ({max_loss_pct:.1f}%)")
+    lines.append(f"\u26a0\ufe0f Max Loss: ${max_loss:,.0f} ({max_loss_pct:.1f}%)")
     if tp_profits:
         tp_parts = " / ".join(
             f"TP{i + 1} +${p:,.0f}" for i, p in enumerate(tp_profits)
         )
-        lines.append(f"\U0001f4b0 \u9810\u4f30\u7372\u5229: {tp_parts}")
+        lines.append(f"\U0001f4b0 Est. Profit: {tp_parts}")
     lines.append(f"\U0001f4ca Risk/Reward: 1:{rr:.1f}")
 
-    # --- Lower section (optional) ---
+    # --- Analysis section (optional) ---
     if analysis_summary:
         lines.append("")
-        lines.append(f"{bar} \u5206\u6790\u6458\u8981 {long_bar}")
+        lines.append("\u2500\u2500 Analysis \u2500\u2500")
         lines.append("")
 
         label_map = {
@@ -815,7 +811,7 @@ def format_execution_plan(
 
     if rationale:
         lines.append("")
-        lines.append("\U0001f4a1 \u5c40\u52e2\u5206\u6790")
+        lines.append("\U0001f4a1 Rationale")
         lines.append(rationale)
 
     # Footer
