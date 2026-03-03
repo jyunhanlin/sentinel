@@ -15,6 +15,7 @@ from telegram.ext import (
 
 from orchestrator.telegram.formatters import (
     format_eval_report,
+    format_execution_plan,
     format_execution_result,
     format_help,
     format_pending_approval,
@@ -127,6 +128,72 @@ class _MessageCache:
         return self._data.get(message_id)
 
 
+def _extract_analysis_summary(result: Any) -> dict[str, str]:
+    """Extract one-line summaries from pipeline result's agent outputs."""
+    if result is None:
+        return {}
+    summary: dict[str, str] = {}
+
+    tech = getattr(result, "technical_short", None)
+    if tech is not None:
+        trend = (
+            tech.trend.value.upper()
+            if hasattr(tech.trend, "value")
+            else str(tech.trend).upper()
+        )
+        momentum = getattr(tech, "momentum", "")
+        if hasattr(momentum, "value"):
+            momentum = momentum.value.upper()
+        parts = [trend]
+        if momentum:
+            parts.append(f"{momentum} momentum")
+        supports = [
+            kl for kl in getattr(tech, "key_levels", [])
+            if kl.type == "support"
+        ]
+        resists = [
+            kl for kl in getattr(tech, "key_levels", [])
+            if kl.type == "resistance"
+        ]
+        extra_lines: list[str] = []
+        if supports:
+            s_str = " / ".join(f"{kl.price:,.0f}" for kl in supports)
+            extra_lines.append(f"Support: {s_str}")
+        if resists:
+            r_str = " / ".join(f"{kl.price:,.0f}" for kl in resists)
+            extra_lines.append(f"Resist: {r_str}")
+        line = ", ".join(parts)
+        if extra_lines:
+            line += "\n" + " / ".join(extra_lines)
+        summary["technical"] = line
+
+    pos = getattr(result, "positioning", None)
+    if pos is not None:
+        parts_p: list[str] = []
+        funding = getattr(pos, "funding_rate", None)
+        if funding is not None:
+            parts_p.append(f"Funding {funding:+.4f}%")
+        oi_chg = getattr(pos, "open_interest_change_pct", None)
+        if oi_chg is not None:
+            parts_p.append(f"OI {oi_chg:+.1f}%")
+        if parts_p:
+            summary["positioning"] = "\n".join(parts_p)
+
+    cat = getattr(result, "catalyst", None)
+    if cat is not None:
+        cat_summary = getattr(cat, "summary", None)
+        if cat_summary:
+            summary["catalyst"] = str(cat_summary)[:100]
+
+    corr = getattr(result, "correlation", None)
+    if corr is not None:
+        corr_summary = getattr(corr, "summary", None)
+        if corr_summary:
+            summary["correlation"] = str(corr_summary)[:100]
+
+    return summary
+
+
 class SentinelBot:
     def __init__(
         self,
@@ -164,6 +231,7 @@ class SentinelBot:
         self._data_fetcher = data_fetcher
         self._leverage_options: list[int] = [5, 10, 20, 50]
         self._price_board_msg_ids: dict[int, int] = {}  # chat_id → message_id
+        self._adjustments: dict[str, dict[str, Any]] = {}  # approval_id → adjusted params
 
     _BOT_COMMANDS = [
         BotCommand("status", "Account overview & latest proposals"),
@@ -246,6 +314,8 @@ class SentinelBot:
                     await self.push_pending_approval(
                         chat_id, approval,
                         technical_short=result.technical_short,
+                        execution_plan=getattr(result, "execution_plan", None),
+                        pipeline_result=result,
                     )
                     continue
             await self.push_proposal(chat_id, result)
@@ -556,7 +626,9 @@ class SentinelBot:
                 )
                 if approval and update.effective_chat:
                     await self.push_pending_approval(
-                        update.effective_chat.id, approval
+                        update.effective_chat.id, approval,
+                        execution_plan=getattr(result, "execution_plan", None),
+                        pipeline_result=result,
                     )
                 else:
                     await self._reply(update, format_proposal(result))
@@ -660,22 +732,65 @@ class SentinelBot:
         approval: PendingApproval,
         *,
         technical_short: Any | None = None,
+        execution_plan: Any | None = None,
+        pipeline_result: Any | None = None,
     ) -> int | None:
-        """Push proposal with Approve/Reject + Translate keyboard. Returns message_id."""
+        """Push proposal with action keyboard. Returns message_id."""
         if self._app is None:
             return None
-        text = format_pending_approval(approval, technical_short=technical_short)
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "Approve", callback_data=f"approve:{approval.approval_id}"
+
+        if execution_plan is not None:
+            analysis_summary = _extract_analysis_summary(pipeline_result)
+            text = format_execution_plan(
+                plan=execution_plan,
+                confidence=approval.proposal.confidence,
+                time_horizon=approval.proposal.time_horizon,
+                analysis_summary=analysis_summary or None,
+                rationale=approval.proposal.rationale,
+                model_used=approval.model_used,
+                expires_minutes=int(
+                    (approval.expires_at - approval.created_at).total_seconds() / 60
                 ),
-                InlineKeyboardButton(
-                    "Reject", callback_data=f"reject:{approval.approval_id}"
-                ),
-            ],
-            [InlineKeyboardButton("Translate to zh-TW", callback_data="translate:zh")],
-        ])
+            )
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "\U0001f680 \u958b\u5009",
+                        callback_data=f"approve:{approval.approval_id}",
+                    ),
+                    InlineKeyboardButton(
+                        "\u270f\ufe0f \u8abf\u6574",
+                        callback_data=f"adjust:{approval.approval_id}",
+                    ),
+                    InlineKeyboardButton(
+                        "\u274c \u8df3\u904e",
+                        callback_data=f"reject:{approval.approval_id}",
+                    ),
+                ],
+                [InlineKeyboardButton(
+                    "Translate to zh-TW", callback_data="translate:zh",
+                )],
+            ])
+        else:
+            text = format_pending_approval(
+                approval, technical_short=technical_short,
+            )
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "Approve",
+                        callback_data=f"approve:{approval.approval_id}",
+                    ),
+                    InlineKeyboardButton(
+                        "Reject",
+                        callback_data=f"reject:{approval.approval_id}",
+                    ),
+                ],
+                [InlineKeyboardButton(
+                    "Translate to zh-TW", callback_data="translate:zh",
+                )],
+            ])
+
         msg = await self._app.bot.send_message(
             chat_id=chat_id, text=text, reply_markup=keyboard,
         )
@@ -705,6 +820,14 @@ class SentinelBot:
         "resume":           (2, "_handle_resume"),
         "cancel":           (1, "_handle_cancel"),
         "history":          (3, "_handle_history_callback"),
+        "adjust":           (2, "_handle_adjust"),
+        "adj_lev":          (2, "_handle_adjust_leverage"),
+        "set_lev":          (3, "_handle_set_leverage"),
+        "adj_sl":           (2, "_handle_adjust_sl_prompt"),
+        "adj_tp":           (2, "_handle_adjust_tp_prompt"),
+        "adj_qty":          (2, "_handle_adjust_qty"),
+        "adj_confirm":      (2, "_handle_adjust_confirm"),
+        "adj_cancel":       (2, "_handle_adjust_cancel"),
     }
 
     async def _callback_router(
@@ -1130,6 +1253,192 @@ class SentinelBot:
             self._latest_results[symbol] = self._latest_results[symbol].model_copy(
                 update={"status": "rejected"}
             )
+
+    # --- Adjustment flow handlers ---
+
+    async def _handle_adjust(
+        self, query: CallbackQuery, approval_id: str, *_args: str,
+    ) -> None:
+        """Show parameter adjustment menu."""
+        if self._approval_manager is None:
+            await query.answer("Not configured")
+            return
+        approval = self._approval_manager.get(approval_id)
+        if approval is None:
+            await query.answer("Expired or not found")
+            return
+
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    "Leverage",
+                    callback_data=f"adj_lev:{approval_id}",
+                ),
+                InlineKeyboardButton(
+                    "Stop Loss",
+                    callback_data=f"adj_sl:{approval_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "Take Profit",
+                    callback_data=f"adj_tp:{approval_id}",
+                ),
+                InlineKeyboardButton(
+                    "Quantity",
+                    callback_data=f"adj_qty:{approval_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "\U0001f680 \u78ba\u8a8d\u958b\u5009",
+                    callback_data=f"adj_confirm:{approval_id}",
+                ),
+                InlineKeyboardButton(
+                    "\u274c \u53d6\u6d88",
+                    callback_data=f"adj_cancel:{approval_id}",
+                ),
+            ],
+        ]
+        await _safe_callback_reply(
+            query,
+            text="\u270f\ufe0f \u8981\u8abf\u6574\u54ea\u500b\u53c3\u6578\uff1f",
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+
+    async def _handle_adjust_leverage(
+        self, query: CallbackQuery, approval_id: str, *_args: str,
+    ) -> None:
+        """Show leverage selection buttons for adjustment."""
+        if self._approval_manager is None:
+            await query.answer("Not configured")
+            return
+        approval = self._approval_manager.get(approval_id)
+        if approval is None:
+            await query.answer("Expired or not found")
+            return
+
+        current_lev = self._adjustments.get(
+            approval_id, {},
+        ).get("leverage", approval.proposal.suggested_leverage)
+
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    f"{'> ' if lev == current_lev else ''}{lev}x",
+                    callback_data=f"set_lev:{approval_id}:{lev}",
+                )
+                for lev in self._leverage_options
+            ],
+            [InlineKeyboardButton(
+                "\u2b05\ufe0f \u8fd4\u56de",
+                callback_data=f"adjust:{approval_id}",
+            )],
+        ]
+        await _safe_callback_reply(
+            query,
+            text=(
+                f"\u76ee\u524d Leverage: {current_lev}x\n"
+                "\u9078\u64c7\u65b0\u7684\u500d\u6578\uff1a"
+            ),
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+
+    async def _handle_set_leverage(
+        self, query: CallbackQuery, approval_id: str, leverage_str: str, *_args: str,
+    ) -> None:
+        """Store adjusted leverage and return to adjustment menu."""
+        leverage = int(leverage_str)
+        adj = self._adjustments.setdefault(approval_id, {})
+        adj["leverage"] = leverage
+        await query.answer(f"Leverage set to {leverage}x")
+        # Return to adjustment menu
+        await self._handle_adjust(query, approval_id)
+
+    async def _handle_adjust_sl_prompt(
+        self, query: CallbackQuery, approval_id: str, *_args: str,
+    ) -> None:
+        """Prompt user to type new SL price."""
+        await _safe_callback_reply(
+            query,
+            text=(
+                "\u26d4 \u8f38\u5165\u65b0\u7684 Stop Loss \u50f9\u683c\uff1a\n"
+                "\u4f8b: 92500\n\n"
+                "\u76f4\u63a5\u8f38\u5165\u6578\u5b57\u5373\u53ef\u3002"
+            ),
+        )
+        adj = self._adjustments.setdefault(approval_id, {})
+        adj["_awaiting"] = "sl"
+        adj["_approval_id"] = approval_id
+
+    async def _handle_adjust_tp_prompt(
+        self, query: CallbackQuery, approval_id: str, *_args: str,
+    ) -> None:
+        """Prompt user to type new TP prices."""
+        await _safe_callback_reply(
+            query,
+            text=(
+                "\u2705 \u8f38\u5165\u65b0\u7684 Take Profit \u50f9\u683c\uff1a\n"
+                "\u4f8b: 97000 50%, 99000 100%\n\n"
+                "\u683c\u5f0f: \u50f9\u683c \u5e73\u5009\u6bd4\u4f8b, "
+                "\u50f9\u683c \u5e73\u5009\u6bd4\u4f8b"
+            ),
+        )
+        adj = self._adjustments.setdefault(approval_id, {})
+        adj["_awaiting"] = "tp"
+        adj["_approval_id"] = approval_id
+
+    async def _handle_adjust_qty(
+        self, query: CallbackQuery, approval_id: str, *_args: str,
+    ) -> None:
+        """Prompt user to type new margin amount."""
+        await _safe_callback_reply(
+            query,
+            text=(
+                "\U0001f4b0 \u8f38\u5165\u65b0\u7684\u4fdd\u8b49\u91d1\u91d1\u984d (USDT)\uff1a\n"
+                "\u4f8b: 300\n\n"
+                "\u76f4\u63a5\u8f38\u5165\u6578\u5b57\u5373\u53ef\u3002"
+            ),
+        )
+        adj = self._adjustments.setdefault(approval_id, {})
+        adj["_awaiting"] = "margin"
+        adj["_approval_id"] = approval_id
+
+    async def _handle_adjust_confirm(
+        self, query: CallbackQuery, approval_id: str, *_args: str,
+    ) -> None:
+        """Confirm adjustment and proceed to execute with adjusted params."""
+        adj = self._adjustments.pop(approval_id, {})
+        leverage = adj.get("leverage")
+        margin = adj.get("margin")
+
+        if leverage is not None or margin is not None:
+            # Route to existing execution flow with adjusted params
+            lev = leverage or (
+                self._approval_manager.get(approval_id).proposal.suggested_leverage
+                if self._approval_manager and self._approval_manager.get(approval_id)
+                else 10
+            )
+            if margin is not None:
+                await self._handle_confirm_margin(
+                    query, approval_id, str(lev), str(int(margin)),
+                )
+            else:
+                await self._handle_confirm_leverage(
+                    query, approval_id, str(lev),
+                )
+        else:
+            # No adjustments made, route to standard approve
+            await self._handle_approve(query, approval_id)
+
+    async def _handle_adjust_cancel(
+        self, query: CallbackQuery, approval_id: str, *_args: str,
+    ) -> None:
+        """Cancel adjustment and return to original message."""
+        self._adjustments.pop(approval_id, None)
+        await _safe_callback_reply(
+            query, text="\u274c \u8abf\u6574\u5df2\u53d6\u6d88\u3002",
+        )
 
     async def _eval_handler(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
