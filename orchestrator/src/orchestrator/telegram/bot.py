@@ -329,6 +329,15 @@ class SentinelBot:
         if self._app is None:
             return
         msg = format_trade_report(result)
+
+        # Append pipeline evaluation if available
+        if self._evaluator is not None:
+            from orchestrator.telegram.formatters import format_trade_evaluation
+
+            ev = self._evaluator.evaluate_single(result.trade_id)
+            if ev is not None:
+                msg = msg + "\n\n" + format_trade_evaluation(ev)
+
         for chat_id in self.admin_chat_ids:
             sent = await self._app.bot.send_message(
                 chat_id=chat_id, text=msg, reply_markup=_translate_keyboard(),
@@ -1726,6 +1735,15 @@ class SentinelBot:
                 trade_id=trade_id, current_price=current_price,
             )
             text = format_trade_report(result)
+
+            # Append pipeline evaluation
+            if self._evaluator is not None:
+                from orchestrator.telegram.formatters import format_trade_evaluation
+
+                ev = self._evaluator.evaluate_single(result.trade_id)
+                if ev is not None:
+                    text = text + "\n\n" + format_trade_evaluation(ev)
+
             await _safe_callback_reply(query, text=text, reply_markup=_translate_keyboard())
             if query.message:
                 self._msg_cache.store(query.message.message_id, text)
@@ -1823,6 +1841,15 @@ class SentinelBot:
                 trade_id=trade_id, pct=pct, current_price=current_price,
             )
             text = format_trade_report(result)
+
+            # Append pipeline evaluation
+            if self._evaluator is not None:
+                from orchestrator.telegram.formatters import format_trade_evaluation
+
+                ev = self._evaluator.evaluate_single(result.trade_id)
+                if ev is not None:
+                    text = text + "\n\n" + format_trade_evaluation(ev)
+
             await _safe_callback_reply(query, text=text, reply_markup=_translate_keyboard())
             if query.message:
                 self._msg_cache.store(query.message.message_id, text)
