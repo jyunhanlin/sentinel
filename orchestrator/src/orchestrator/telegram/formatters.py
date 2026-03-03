@@ -180,7 +180,7 @@ def format_pending_approval(
         f"{emoji} {p.side.value.upper()} {p.symbol}",
         time_str,
         "",
-        f"\u25b6 Entry:  ${entry_price:,.1f} ({p.entry.type})",
+        f"\U0001f3af Entry: ${entry_price:,.1f} ({p.entry.type})",
     ]
 
     if p.stop_loss is not None:
@@ -198,17 +198,17 @@ def format_pending_approval(
 
     # Trade parameters
     lines.append("")
-    lines.append(f"Leverage: {p.suggested_leverage}x")
+    lines.append(f"\U0001f4b5 Leverage: {p.suggested_leverage}x")
     if technical_short and hasattr(technical_short, "volatility_pct"):
-        lines.append(f"Volatility: {technical_short.volatility_pct:.1f}%")
+        lines.append(f"\U0001f4c8 Volatility: {technical_short.volatility_pct:.1f}%")
     if p.stop_loss is not None and p.take_profit:
         risk_dist = abs(entry_price - p.stop_loss)
         reward_dist = abs(p.take_profit[-1].price - entry_price)
         rr = reward_dist / risk_dist if risk_dist > 0 else 0
-        lines.append(f"Risk/Reward: 1:{rr:.1f}")
-    lines.append(f"Confidence: {p.confidence:.0%}")
-    lines.append(f"Risk: {p.position_size_risk_pct}%")
-    lines.append(f"Time Horizon: {p.time_horizon}")
+        lines.append(f"\U0001f4ca Risk/Reward: 1:{rr:.1f}")
+    lines.append(f"\U0001f4ca Confidence: {p.confidence:.0%}")
+    lines.append(f"\u26a0\ufe0f Risk: {p.position_size_risk_pct}%")
+    lines.append(f"\u23f0 Time Horizon: {p.time_horizon}")
 
     # Technical analysis section
     if technical_short:
@@ -222,7 +222,7 @@ def format_pending_approval(
             if hasattr(technical_short.volatility_regime, "value")
             else str(technical_short.volatility_regime).upper()
         )
-        lines.append(f"\n\U0001f4ca Trend: {trend_str} | Volatility: {vol_regime}")
+        lines.append(f"\n\U0001f4c8 Trend: {trend_str} | Volatility: {vol_regime}")
 
         supports = [
             kl for kl in technical_short.key_levels if kl.type == "support"
@@ -244,7 +244,7 @@ def format_pending_approval(
                 label = flag.replace("_", " ").title()
                 lines.append(f"\u2022 {label}")
 
-    lines.append(f"\n{p.rationale}")
+    lines.append(f"\n\U0001f4a1 {p.rationale}")
 
     # Footer
     footer_parts: list[str] = []
