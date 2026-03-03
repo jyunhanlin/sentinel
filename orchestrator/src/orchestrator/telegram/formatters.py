@@ -499,13 +499,13 @@ def format_perf_report(stats: PerformanceStats) -> str:
     lines = [
         "Performance",
         "",
-        f"PnL:         {pnl_str}"
+        f"\U0001f4b0 PnL: {pnl_str}"
         f" ({pnl_pct_sign}{stats.total_pnl_pct:.1f}%)",
-        f"Win Rate:    {stats.win_rate:.1%}"
+        f"\U0001f3af Win Rate: {stats.win_rate:.1%}"
         f" ({stats.winning_trades}/{stats.total_trades})",
-        f"Profit Factor: {pf_str}",
-        f"Max DD:      {stats.max_drawdown_pct:.1f}%",
-        f"Sharpe:      {stats.sharpe_ratio:.2f}",
+        f"\U0001f4ca Profit Factor: {pf_str}",
+        f"\U0001f4c9 Max DD: {stats.max_drawdown_pct:.1f}%",
+        f"\U0001f4c8 Sharpe: {stats.sharpe_ratio:.2f}",
     ]
     return "\n".join(lines)
 
@@ -629,7 +629,7 @@ def format_history_paginated(
     if not trades:
         return "No closed trades yet."
 
-    lines = [f"History — {page}/{total_pages}"]
+    lines = [f"History \u2014 {page}/{total_pages}"]
     for t in trades:
         side_str = (
             t.side.upper()
@@ -645,16 +645,16 @@ def format_history_paginated(
             f"\n  {t.symbol} {side_str}{leverage_str}{reason_str}"
         )
         lines.append(
-            f"  ${t.entry_price:,.1f} \u2192 ${t.exit_price:,.1f}"
-            f" | {_pnl_str(t.pnl)}"
+            f"  \U0001f3af ${t.entry_price:,.1f} \u2192 ${t.exit_price:,.1f}"
+            f" \u00b7 \U0001f4b0 {_pnl_str(t.pnl)}"
         )
 
         if t.margin > 0:
             roe = (t.pnl / t.margin * 100) if t.margin else 0
             roe_sign = "+" if roe >= 0 else ""
             lines.append(
-                f"  Margin: ${t.margin:,.2f}"
-                f" | ROE: {roe_sign}{roe:.2f}%"
+                f"  \U0001f4b5 Margin: ${t.margin:,.2f}"
+                f" \u00b7 \U0001f4c8 ROE: {roe_sign}{roe:.2f}%"
             )
 
     return "\n".join(lines)
