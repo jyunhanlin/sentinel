@@ -497,7 +497,7 @@ class SentinelBot:
                     keyboard = InlineKeyboardMarkup([
                         [
                             InlineKeyboardButton(
-                                "\u2699\ufe0f \u7ba1\u7406",
+                                "\u2699\ufe0f Manage",
                                 callback_data=f"pos_manage:{pos.trade_id}",
                             ),
                             InlineKeyboardButton(
@@ -1317,18 +1317,18 @@ class SentinelBot:
             ],
             [
                 InlineKeyboardButton(
-                    "\U0001f680 \u78ba\u8a8d\u958b\u5009",
+                    "\U0001f680 Confirm",
                     callback_data=f"adj_confirm:{approval_id}",
                 ),
                 InlineKeyboardButton(
-                    "\u274c \u53d6\u6d88",
+                    "\u274c Cancel",
                     callback_data=f"adj_cancel:{approval_id}",
                 ),
             ],
         ]
         await _safe_callback_reply(
             query,
-            text="\u270f\ufe0f \u8981\u8abf\u6574\u54ea\u500b\u53c3\u6578\uff1f",
+            text="\u270f\ufe0f Which parameter to adjust?",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
 
@@ -1357,15 +1357,15 @@ class SentinelBot:
                 for lev in self._leverage_options
             ],
             [InlineKeyboardButton(
-                "\u2b05\ufe0f \u8fd4\u56de",
+                "\u2b05\ufe0f Back",
                 callback_data=f"adjust:{approval_id}",
             )],
         ]
         await _safe_callback_reply(
             query,
             text=(
-                f"\u76ee\u524d Leverage: {current_lev}x\n"
-                "\u9078\u64c7\u65b0\u7684\u500d\u6578\uff1a"
+                f"Current Leverage: {current_lev}x\n"
+                "Select new leverage:"
             ),
             reply_markup=InlineKeyboardMarkup(buttons),
         )
@@ -1388,9 +1388,8 @@ class SentinelBot:
         await _safe_callback_reply(
             query,
             text=(
-                "\u26d4 \u8f38\u5165\u65b0\u7684 Stop Loss \u50f9\u683c\uff1a\n"
-                "\u4f8b: 92500\n\n"
-                "\u76f4\u63a5\u8f38\u5165\u6578\u5b57\u5373\u53ef\u3002"
+                "\u26d4 Enter new Stop Loss price:\n"
+                "e.g. 92500"
             ),
         )
         adj = self._adjustments.setdefault(approval_id, {})
@@ -1404,10 +1403,10 @@ class SentinelBot:
         await _safe_callback_reply(
             query,
             text=(
-                "\u2705 \u8f38\u5165\u65b0\u7684 Take Profit \u50f9\u683c\uff1a\n"
-                "\u4f8b: 97000 50%, 99000 100%\n\n"
-                "\u683c\u5f0f: \u50f9\u683c \u5e73\u5009\u6bd4\u4f8b, "
-                "\u50f9\u683c \u5e73\u5009\u6bd4\u4f8b"
+                "\u2705 Enter new Take Profit levels:\n"
+                "e.g. 97000 50%, 99000 100%\n\n"
+                "Format: price close%, "
+                "price close%"
             ),
         )
         adj = self._adjustments.setdefault(approval_id, {})
@@ -1421,9 +1420,8 @@ class SentinelBot:
         await _safe_callback_reply(
             query,
             text=(
-                "\U0001f4b0 \u8f38\u5165\u65b0\u7684\u4fdd\u8b49\u91d1\u91d1\u984d (USDT)\uff1a\n"
-                "\u4f8b: 300\n\n"
-                "\u76f4\u63a5\u8f38\u5165\u6578\u5b57\u5373\u53ef\u3002"
+                "\U0001f4b0 Enter new margin amount (USDT):\n"
+                "e.g. 300"
             ),
         )
         adj = self._adjustments.setdefault(approval_id, {})
@@ -1463,7 +1461,7 @@ class SentinelBot:
         """Cancel adjustment and return to original message."""
         self._adjustments.pop(approval_id, None)
         await _safe_callback_reply(
-            query, text="\u274c \u8abf\u6574\u5df2\u53d6\u6d88\u3002",
+            query, text="\u274c Adjustment cancelled.",
         )
 
     async def _eval_handler(
@@ -2033,33 +2031,33 @@ class SentinelBot:
         buttons = [
             [
                 InlineKeyboardButton(
-                    "\u79fb SL",
+                    "Move SL",
                     callback_data=f"pos_sl:{trade_id}",
                 ),
                 InlineKeyboardButton(
-                    "\u8abf TP",
+                    "Adjust TP",
                     callback_data=f"pos_tp:{trade_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "\u52a0\u5009",
+                    "Add",
                     callback_data=f"pos_add:{trade_id}",
                 ),
                 InlineKeyboardButton(
-                    "\u6e1b\u5009",
+                    "Reduce",
                     callback_data=f"pos_reduce:{trade_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "\u5e73\u5009",
+                    "Close",
                     callback_data=f"pos_close:{trade_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "\u2b05\ufe0f \u8fd4\u56de",
+                    "\u2b05\ufe0f Back",
                     callback_data=f"pos_back:{trade_id}",
                 ),
             ],
@@ -2088,10 +2086,8 @@ class SentinelBot:
         await _safe_callback_reply(
             query,
             text=(
-                "\u26d4 \u8f38\u5165\u65b0\u7684 Stop Loss"
-                " \u50f9\u683c\uff1a\n"
-                "\u4f8b: 92500\n\n"
-                "\u76f4\u63a5\u8f38\u5165\u6578\u5b57\u5373\u53ef\u3002"
+                "\u26d4 Enter new Stop Loss price:\n"
+                "e.g. 92500"
             ),
         )
         adj = self._adjustments.setdefault(
@@ -2107,12 +2103,10 @@ class SentinelBot:
         await _safe_callback_reply(
             query,
             text=(
-                "\u2705 \u8f38\u5165\u65b0\u7684"
-                " Take Profit \u50f9\u683c\uff1a\n"
-                "\u4f8b: 97000 50%, 99000 100%\n\n"
-                "\u683c\u5f0f: \u50f9\u683c"
-                " \u5e73\u5009\u6bd4\u4f8b, "
-                "\u50f9\u683c \u5e73\u5009\u6bd4\u4f8b"
+                "\u2705 Enter new Take Profit levels:\n"
+                "e.g. 97000 50%, 99000 100%\n\n"
+                "Format: price close%, "
+                "price close%"
             ),
         )
         adj = self._adjustments.setdefault(
@@ -2173,7 +2167,7 @@ class SentinelBot:
         keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton(
-                    "\u2699\ufe0f \u7ba1\u7406",
+                    "\u2699\ufe0f Manage",
                     callback_data=f"pos_manage:{trade_id}",
                 ),
                 InlineKeyboardButton(
