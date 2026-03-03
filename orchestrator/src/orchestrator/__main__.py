@@ -20,7 +20,9 @@ from orchestrator.exchange.client import ExchangeClient
 from orchestrator.exchange.data_fetcher import DataFetcher
 from orchestrator.exchange.external_data import ExternalDataFetcher
 from orchestrator.exchange.paper_engine import PaperEngine
+from orchestrator.execution.equity import PaperEquityProvider
 from orchestrator.execution.executor import LiveExecutor, PaperExecutor
+from orchestrator.execution.planner import ExecutionPlanner
 from orchestrator.llm.backend import ClaudeCLIBackend, LiteLLMBackend
 from orchestrator.llm.client import LLMClient
 from orchestrator.logging import setup_logging
@@ -78,6 +80,7 @@ def create_app_components(
     llm_backend: str = "api",
     claude_cli_path: str = "claude",
     claude_cli_timeout: int = 120,
+    trade_margin_amount: float = 500.0,
     # Semi-auto Trading
     trading_mode: str = "paper",
     approval_timeout_minutes: int = 15,
@@ -183,6 +186,18 @@ def create_app_components(
     else:
         executor = PaperExecutor(paper_engine=paper_engine)
 
+    # Execution planner
+    from types import SimpleNamespace
+
+    equity_provider = PaperEquityProvider(engine=paper_engine)
+    planner_config = SimpleNamespace(
+        trade_margin_amount=trade_margin_amount,
+        paper_taker_fee_rate=paper_taker_fee_rate,
+    )
+    execution_planner = ExecutionPlanner(
+        equity_provider=equity_provider, config=planner_config,
+    )
+
     # Pipeline
     runner = PipelineRunner(
         data_fetcher=data_fetcher,
@@ -199,6 +214,7 @@ def create_app_components(
         risk_checker=risk_checker,
         paper_engine=paper_engine,
         approval_manager=approval_manager,
+        execution_planner=execution_planner,
     )
 
     scheduler = PipelineScheduler(
@@ -280,6 +296,7 @@ def _build_components(settings: Settings) -> dict[str, Any]:
         paper_initial_equity=settings.paper_initial_equity,
         paper_taker_fee_rate=settings.paper_taker_fee_rate,
         paper_maker_fee_rate=settings.paper_maker_fee_rate,
+        trade_margin_amount=settings.trade_margin_amount,
         trading_mode=settings.trading_mode,
         approval_timeout_minutes=settings.approval_timeout_minutes,
         price_deviation_threshold=settings.price_deviation_threshold,
