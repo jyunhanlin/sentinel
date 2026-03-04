@@ -8,12 +8,11 @@ data/
 .coverage
 .pytest_cache/
 .worktrees/
-.agents/skills/
-# Symlinks created by `npx skills add` (restore via `npx skills experimental_install`)
-.claude/skills/crypto-market-rank
-.claude/skills/meme-rush
-.claude/skills/query-address-info
-.claude/skills/query-token-audit
-.claude/skills/query-token-info
-.claude/skills/spot
-.claude/skills/trading-signal
+# Skills: ignore all, whitelist hand-written ones
+.agents/
+.claude/skills/*
+!.claude/skills/catalyst/
+!.claude/skills/correlation/
+!.claude/skills/positioning/
+!.claude/skills/proposer/
+!.claude/skills/technical/
