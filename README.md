@@ -102,6 +102,12 @@ uv run python -m orchestrator perf
 ```bash
 cd orchestrator
 
+# Install dependencies
+uv sync --all-extras
+
+# Install third-party agent skills (Binance Web3, etc.)
+npx skills experimental_install
+
 # Run tests
 uv run pytest -v --cov=orchestrator
 
