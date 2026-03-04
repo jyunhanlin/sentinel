@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "skills": {
+    "crypto-market-rank": {
+      "source": "binance/binance-skills-hub",
+      "sourceType": "github",
+      "computedHash": "f6cc1e36f3c03c34e99a55d31d2241876e1be19e2509fd7055cb30699ec51e3b"
+    },
+    "meme-rush": {
+      "source": "binance/binance-skills-hub",
+      "sourceType": "github",
+      "computedHash": "38899d46075cf700fe75bc98609c5777678d46647fa66a077d7b5065c3f1a3f4"
+    },
+    "query-address-info": {
+      "source": "binance/binance-skills-hub",
+      "sourceType": "github",
+      "computedHash": "0160c889186bf829f688b80d3bc3028f8970688a79a79b6b20e588a283dc9e8c"
+    },
+    "query-token-audit": {
+      "source": "binance/binance-skills-hub",
+      "sourceType": "github",
+      "computedHash": "82259e7857b6c259154c364a2c42ea793d26b1b256d9e9e8874be6bffc225301"
+    },
+    "query-token-info": {
+      "source": "binance/binance-skills-hub",
+      "sourceType": "github",
+      "computedHash": "6ccc8f650564a55395c67062c5f10172421418f62561f4fffb26cdea166d5f2b"
+    },
+    "spot": {
+      "source": "binance/binance-skills-hub",
+      "sourceType": "github",
+      "computedHash": "fba86e779bd82c20f0cb3f60818800e776efc43d98ed8676bfc6628eba5f1bc3"
+    },
+    "trading-signal": {
+      "source": "binance/binance-skills-hub",
+      "sourceType": "github",
+      "computedHash": "d7c544586f3284d5583f65b53542cff2b12e99051bdf1ddd3600748b799fe4c2"
+    }
+  }
+}
