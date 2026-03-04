@@ -8,3 +8,4 @@ data/
 .coverage
 .pytest_cache/
 .worktrees/
+.agents/skills/
