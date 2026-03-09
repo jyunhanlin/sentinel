@@ -84,10 +84,17 @@ class ProposerAgent(BaseAgent[TradeProposal]):
             f"Confidence: {correlation.confidence:.2f}"
         )
 
-        return (
+        critique_feedback: str | None = kwargs.get("critique_feedback")
+
+        prompt = (
             f"Use the {self._skill_name} skill.\n\n"
             f"{data}"
         )
+
+        if critique_feedback:
+            prompt += f"\n\n=== Critique Feedback (MUST ADDRESS) ===\n{critique_feedback}"
+
+        return prompt
 
     def _get_default_output(self) -> TradeProposal:
         return TradeProposal(

@@ -153,3 +153,27 @@ class TestProposerAgent:
 
         assert result.degraded is True
         assert result.output.side == Side.FLAT
+
+    @pytest.mark.asyncio
+    async def test_prompt_includes_critique_feedback(self):
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.call.return_value = LLMCallResult(
+            content=FLAT_RESPONSE, model="test",
+            input_tokens=300, output_tokens=150, latency_ms=1000,
+        )
+
+        agent = ProposerAgent(client=mock_client)
+        kwargs = _analysis_kwargs()
+        kwargs["critique_feedback"] = (
+            "Previous proposal failed critique:\n"
+            "- [consistency] Side contradicts bearish analysis\n"
+            "Suggested improvements:\n"
+            "- Reconsider side"
+        )
+        await agent.analyze(**kwargs)
+
+        messages = mock_client.call.call_args[0][0]
+        prompt = messages[0]["content"]
+
+        assert "Previous proposal failed critique" in prompt
+        assert "Reconsider side" in prompt
