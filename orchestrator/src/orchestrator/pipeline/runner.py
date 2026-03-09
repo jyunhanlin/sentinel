@@ -16,6 +16,7 @@ from orchestrator.execution.plan import ExecutionPlan
 from orchestrator.models import (
     CatalystReport,
     CorrelationAnalysis,
+    CritiqueResult,
     PositioningAnalysis,
     Side,
     TechnicalAnalysis,
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from orchestrator.approval.manager import ApprovalManager
     from orchestrator.exchange.paper_engine import PaperEngine
     from orchestrator.execution.planner import ExecutionPlanner
+    from orchestrator.pipeline.refinement import RefinementLoop
 
 logger = structlog.get_logger(__name__)
 
@@ -58,6 +60,9 @@ class PipelineResult(BaseModel, frozen=True):
     catalyst: CatalystReport | None = None
     correlation: CorrelationAnalysis | None = None
     execution_plan: ExecutionPlan | None = None
+    refinement_rounds: int = 0
+    refinement_exhausted: bool = False
+    critique: CritiqueResult | None = None
 
 
 class PipelineRunner:
@@ -78,6 +83,7 @@ class PipelineRunner:
         paper_engine: PaperEngine | None = None,
         approval_manager: ApprovalManager | None = None,
         execution_planner: ExecutionPlanner | None = None,
+        refinement_loop: RefinementLoop | None = None,
     ) -> None:
         self._data_fetcher = data_fetcher
         self._technical_short_agent = technical_short_agent
@@ -93,9 +99,11 @@ class PipelineRunner:
         self._paper_engine = paper_engine
         self._approval_manager = approval_manager
         self._execution_planner = execution_planner
+        self._refinement_loop = refinement_loop
 
     async def execute(
-        self, symbol: str, *, timeframe: str = "1h", model_override: str | None = None
+        self, symbol: str, *, timeframe: str = "1h", model_override: str | None = None,
+        refinement: bool = False,
     ) -> PipelineResult:
         run_id = str(uuid.uuid4())
         structlog.contextvars.bind_contextvars(symbol=symbol)
@@ -159,26 +167,49 @@ class PipelineRunner:
             self._save_llm_calls(run_id, "catalyst", catalyst_result)
             self._save_llm_calls(run_id, "correlation", correlation_result)
 
-            # Step 3: Run Proposer (depends on all 5 analysis outputs)
-            proposer_result = await self._proposer_agent.analyze(
-                snapshot=snapshot,
-                technical_short=tech_short_result.output,
-                technical_long=tech_long_result.output,
-                positioning=positioning_result.output,
-                catalyst=catalyst_result.output,
-                correlation=correlation_result.output,
-                model_override=model_override,
-            )
-            self._save_llm_calls(run_id, "proposer", proposer_result)
+            # Step 3: Run Proposer (with optional refinement)
+            analysis_kwargs = {
+                "snapshot": snapshot,
+                "technical_short": tech_short_result.output,
+                "technical_long": tech_long_result.output,
+                "positioning": positioning_result.output,
+                "catalyst": catalyst_result.output,
+                "correlation": correlation_result.output,
+                "model_override": model_override,
+            }
+
+            refinement_result = None
+            if refinement and self._refinement_loop is not None:
+                from orchestrator.pipeline.refinement import RefinementResult
+
+                refinement_result = await self._refinement_loop.run(**analysis_kwargs)
+                for call in refinement_result.all_llm_calls:
+                    self._llm_call_repo.save_call(
+                        run_id=run_id, agent_type="proposer_refinement",
+                        prompt="", response=call.content, model=call.model,
+                        latency_ms=call.latency_ms,
+                        input_tokens=call.input_tokens,
+                        output_tokens=call.output_tokens,
+                    )
+                proposer_output = refinement_result.proposal
+                proposer_degraded = refinement_result.proposer_degraded
+                proposer_result = None
+            else:
+                proposer_result = await self._proposer_agent.analyze(**analysis_kwargs)
+                self._save_llm_calls(run_id, "proposer", proposer_result)
+                proposer_output = proposer_result.output
+                proposer_degraded = proposer_result.degraded
 
             # Step 4: Validate proposal
             aggregation = aggregate_proposal(
-                proposer_result.output, current_price=snapshot.current_price
+                proposer_output, current_price=snapshot.current_price
             )
 
             model_used = model_override or ""
-            if proposer_result.llm_calls:
+            if proposer_result and proposer_result.llm_calls:
                 model_used = proposer_result.llm_calls[-1].model
+            elif refinement_result and refinement_result.all_llm_calls:
+                model_used = refinement_result.all_llm_calls[-1].model
 
             if not aggregation.valid:
                 self._proposal_repo.save_proposal(
@@ -194,11 +225,13 @@ class PipelineRunner:
                     model_used=model_used, proposal=aggregation.proposal,
                     rejection_reason=aggregation.rejection_reason,
                     proposer_result=proposer_result,
+                    proposer_degraded_override=proposer_degraded,
                     tech_short_result=tech_short_result,
                     tech_long_result=tech_long_result,
                     positioning_result=positioning_result,
                     catalyst_result=catalyst_result,
                     correlation_result=correlation_result,
+                    refinement_result=refinement_result,
                 )
 
             # Step 4b: Compute execution plan
@@ -233,12 +266,14 @@ class PipelineRunner:
                         model_used=model_used, proposal=aggregation.proposal,
                         approval_id=approval.approval_id,
                         proposer_result=proposer_result,
+                        proposer_degraded_override=proposer_degraded,
                         tech_short_result=tech_short_result,
                         tech_long_result=tech_long_result,
                         positioning_result=positioning_result,
                         catalyst_result=catalyst_result,
                         correlation_result=correlation_result,
                         execution_plan=execution_plan,
+                        refinement_result=refinement_result,
                     )
                 elif self._paper_engine is not None:
                     # Auto mode: execute immediately
@@ -259,12 +294,14 @@ class PipelineRunner:
                 run_id=run_id, symbol=symbol, status="completed",
                 model_used=model_used, proposal=aggregation.proposal,
                 proposer_result=proposer_result,
+                proposer_degraded_override=proposer_degraded,
                 tech_short_result=tech_short_result,
                 tech_long_result=tech_long_result,
                 positioning_result=positioning_result,
                 catalyst_result=catalyst_result,
                 correlation_result=correlation_result,
                 execution_plan=execution_plan,
+                refinement_result=refinement_result,
             )
 
         except Exception as e:
@@ -295,13 +332,24 @@ class PipelineRunner:
         rejection_reason: str = "",
         approval_id: str | None = None,
         proposer_result: AgentResult[TradeProposal] | None = None,
+        proposer_degraded_override: bool = False,
         tech_short_result: AgentResult[TechnicalAnalysis] | None = None,
         tech_long_result: AgentResult[TechnicalAnalysis] | None = None,
         positioning_result: AgentResult[PositioningAnalysis] | None = None,
         catalyst_result: AgentResult[CatalystReport] | None = None,
         correlation_result: AgentResult[CorrelationAnalysis] | None = None,
         execution_plan: ExecutionPlan | None = None,
+        refinement_result: object | None = None,
     ) -> PipelineResult:
+        # Refinement fields
+        refinement_rounds = 0
+        refinement_exhausted = False
+        critique = None
+        if refinement_result is not None:
+            refinement_rounds = refinement_result.rounds  # type: ignore[union-attr]
+            refinement_exhausted = refinement_result.exhausted  # type: ignore[union-attr]
+            critique = refinement_result.critique  # type: ignore[union-attr]
+
         return PipelineResult(
             run_id=run_id,
             symbol=symbol,
@@ -310,7 +358,7 @@ class PipelineRunner:
             proposal=proposal,
             rejection_reason=rejection_reason,
             approval_id=approval_id,
-            proposer_degraded=proposer_result.degraded if proposer_result else False,
+            proposer_degraded=proposer_degraded_override,
             technical_short_degraded=tech_short_result.degraded if tech_short_result else False,
             technical_long_degraded=tech_long_result.degraded if tech_long_result else False,
             positioning_degraded=positioning_result.degraded if positioning_result else False,
@@ -322,6 +370,9 @@ class PipelineRunner:
             catalyst=catalyst_result.output if catalyst_result else None,
             correlation=correlation_result.output if correlation_result else None,
             execution_plan=execution_plan,
+            refinement_rounds=refinement_rounds,
+            refinement_exhausted=refinement_exhausted,
+            critique=critique,
         )
 
     def _save_llm_calls(self, run_id: str, agent_type: str, result: AgentResult[BaseModel]) -> None:

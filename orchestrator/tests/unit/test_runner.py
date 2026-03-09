@@ -18,6 +18,8 @@ from orchestrator.models import (
     Trend,
     VolatilityRegime,
 )
+from orchestrator.models import CritiqueResult, DimensionVerdict
+from orchestrator.pipeline.refinement import RefinementLoop, RefinementResult
 from orchestrator.pipeline.runner import PipelineResult, PipelineRunner
 
 
@@ -307,3 +309,83 @@ class TestSaveLLMCalls:
         call_kwargs = llm_call_repo.save_call.call_args[1]
         assert call_kwargs["prompt"] != "(see messages)"
         assert "analyze" in call_kwargs["prompt"]
+
+
+def _make_pass_critique() -> CritiqueResult:
+    return CritiqueResult(
+        verdicts=[
+            DimensionVerdict(dimension="consistency", passed=True, reason="ok"),
+        ],
+        overall_passed=True, suggestions=[], summary="ok",
+    )
+
+
+class TestPipelineRunnerRefinement:
+    @pytest.mark.asyncio
+    async def test_refinement_enabled_uses_loop(self):
+        """When refinement=True and loop is injected, uses RefinementLoop."""
+        proposal = _make_proposal()
+        refinement_loop = AsyncMock(spec=RefinementLoop)
+        refinement_loop.run.return_value = RefinementResult(
+            proposal=proposal,
+            critique=_make_pass_critique(),
+            rounds=1,
+            all_llm_calls=[make_llm_call()],
+        )
+
+        runner, mocks = _make_runner(refinement_loop=refinement_loop)
+        result = await runner.execute("BTC/USDT:USDT", refinement=True)
+
+        assert result.status == "completed"
+        assert result.refinement_rounds == 1
+        assert result.refinement_exhausted is False
+        refinement_loop.run.assert_called_once()
+        # Proposer should NOT be called directly
+        mocks["proposer_agent"].analyze.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_refinement_disabled_uses_proposer_directly(self):
+        """When refinement=False, falls back to direct proposer call."""
+        refinement_loop = AsyncMock(spec=RefinementLoop)
+
+        runner, mocks = _make_runner(refinement_loop=refinement_loop)
+        result = await runner.execute("BTC/USDT:USDT", refinement=False)
+
+        assert result.status == "completed"
+        assert result.refinement_rounds == 0
+        refinement_loop.run.assert_not_called()
+        mocks["proposer_agent"].analyze.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_refinement_loop_injected(self):
+        """When no loop injected, refinement=True is ignored."""
+        runner, mocks = _make_runner()
+        result = await runner.execute("BTC/USDT:USDT", refinement=True)
+
+        assert result.status == "completed"
+        assert result.refinement_rounds == 0
+        mocks["proposer_agent"].analyze.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_refinement_exhausted_flag(self):
+        """Exhausted refinement sets flag on PipelineResult."""
+        fail_critique = CritiqueResult(
+            verdicts=[DimensionVerdict(dimension="consistency", passed=False, reason="bad")],
+            overall_passed=False, suggestions=["fix it"], summary="failed",
+        )
+        refinement_loop = AsyncMock(spec=RefinementLoop)
+        refinement_loop.run.return_value = RefinementResult(
+            proposal=_make_proposal(),
+            critique=fail_critique,
+            rounds=2,
+            exhausted=True,
+            all_llm_calls=[make_llm_call(), make_llm_call()],
+        )
+
+        runner, _ = _make_runner(refinement_loop=refinement_loop)
+        result = await runner.execute("BTC/USDT:USDT", refinement=True)
+
+        assert result.refinement_rounds == 2
+        assert result.refinement_exhausted is True
+        assert result.critique is not None
+        assert result.critique.overall_passed is False
