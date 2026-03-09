@@ -187,3 +187,25 @@ class TestRefinementLoop:
         second_call_kwargs = proposer.analyze.call_args_list[1][1]
         assert "critique_feedback" in second_call_kwargs
         assert "Reconsider side" in second_call_kwargs["critique_feedback"]
+
+    @pytest.mark.asyncio
+    async def test_critic_degraded_returns_early(self):
+        """If critic degrades, return proposal with critic_degraded flag."""
+        proposer = AsyncMock()
+        proposer.analyze.return_value = AgentResult(
+            output=_make_proposal(), llm_calls=[_make_llm_call()],
+        )
+        critic = AsyncMock()
+        critic.analyze.return_value = AgentResult(
+            output=_make_pass_critique(), degraded=True,
+            llm_calls=[_make_llm_call()],
+        )
+
+        loop = RefinementLoop(proposer=proposer, critic=critic, max_rounds=2)
+        result = await loop.run(snapshot=MagicMock())
+
+        assert result.critic_degraded is True
+        assert result.rounds == 1
+        assert result.proposal.side == Side.LONG
+        # Should not attempt revision since critic is degraded
+        assert proposer.analyze.call_count == 1

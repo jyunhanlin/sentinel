@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from orchestrator.approval.manager import ApprovalManager
     from orchestrator.exchange.paper_engine import PaperEngine
     from orchestrator.execution.planner import ExecutionPlanner
-    from orchestrator.pipeline.refinement import RefinementLoop
+    from orchestrator.pipeline.refinement import RefinementLoop, RefinementResult
 
 logger = structlog.get_logger(__name__)
 
@@ -337,16 +337,16 @@ class PipelineRunner:
         catalyst_result: AgentResult[CatalystReport] | None = None,
         correlation_result: AgentResult[CorrelationAnalysis] | None = None,
         execution_plan: ExecutionPlan | None = None,
-        refinement_result: object | None = None,
+        refinement_result: RefinementResult | None = None,
     ) -> PipelineResult:
         # Refinement fields
         refinement_rounds = 0
         refinement_exhausted = False
         critique = None
         if refinement_result is not None:
-            refinement_rounds = refinement_result.rounds  # type: ignore[union-attr]
-            refinement_exhausted = refinement_result.exhausted  # type: ignore[union-attr]
-            critique = refinement_result.critique  # type: ignore[union-attr]
+            refinement_rounds = refinement_result.rounds
+            refinement_exhausted = refinement_result.exhausted
+            critique = refinement_result.critique
 
         return PipelineResult(
             run_id=run_id,

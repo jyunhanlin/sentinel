@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import structlog
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from orchestrator.agents.base import BaseAgent
 from orchestrator.llm.client import LLMCallResult
@@ -10,15 +10,16 @@ from orchestrator.models import CritiqueResult, TradeProposal
 logger = structlog.get_logger(__name__)
 
 
-class RefinementResult(BaseModel, frozen=True):
+class RefinementResult(BaseModel):
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
     proposal: TradeProposal
     critique: CritiqueResult | None = None
     rounds: int = 0
     exhausted: bool = False
     all_llm_calls: list[LLMCallResult] = []
     proposer_degraded: bool = False
-
-    model_config = {"arbitrary_types_allowed": True}
+    critic_degraded: bool = False
 
 
 class RefinementLoop:
@@ -69,6 +70,16 @@ class RefinementLoop:
             )
             all_llm_calls.extend(critic_result.llm_calls)
             critique = critic_result.output
+
+            if critic_result.degraded:
+                logger.warning("refinement_critic_degraded", round=round_num)
+                return RefinementResult(
+                    proposal=proposal,
+                    critique=critique,
+                    rounds=round_num,
+                    critic_degraded=True,
+                    all_llm_calls=all_llm_calls,
+                )
 
             if critique.overall_passed:
                 logger.info("refinement_passed", round=round_num)
