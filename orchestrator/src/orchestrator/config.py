@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     price_monitor_enabled: bool = True
 
     # Refinement Loop
-    refinement_enabled: bool = False
+    refinement_enabled: bool = True
     refinement_max_rounds: int = 2
 
     # Semi-auto Trading
