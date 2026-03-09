@@ -2,6 +2,8 @@ import pytest
 from pydantic import ValidationError
 
 from orchestrator.models import (
+    CritiqueResult,
+    DimensionVerdict,
     EntryOrder,
     Side,
     TakeProfit,
@@ -110,3 +112,42 @@ class TestTradeProposalLeverage:
                 time_horizon="4h", confidence=0.7,
                 invalid_if=[], rationale="test",
             )
+
+
+class TestCritiqueResult:
+    def test_dimension_verdict_frozen(self):
+        v = DimensionVerdict(dimension="consistency", passed=True, reason="ok")
+        assert v.dimension == "consistency"
+        assert v.passed is True
+        with pytest.raises(Exception):
+            v.dimension = "other"
+
+    def test_critique_result_overall_passed(self):
+        verdicts = [
+            DimensionVerdict(dimension="consistency", passed=True, reason="ok"),
+            DimensionVerdict(dimension="risk_reward", passed=True, reason="ok"),
+            DimensionVerdict(dimension="input_respect", passed=True, reason="ok"),
+            DimensionVerdict(dimension="parameter_sanity", passed=True, reason="ok"),
+        ]
+        cr = CritiqueResult(
+            verdicts=verdicts,
+            overall_passed=True,
+            suggestions=[],
+            summary="All checks passed",
+        )
+        assert cr.overall_passed is True
+        assert len(cr.verdicts) == 4
+
+    def test_critique_result_with_failures(self):
+        verdicts = [
+            DimensionVerdict(dimension="consistency", passed=False, reason="Side contradicts analysis"),
+            DimensionVerdict(dimension="risk_reward", passed=True, reason="ok"),
+        ]
+        cr = CritiqueResult(
+            verdicts=verdicts,
+            overall_passed=False,
+            suggestions=["Reconsider side given bearish momentum"],
+            summary="Consistency check failed",
+        )
+        assert cr.overall_passed is False
+        assert len(cr.suggestions) == 1

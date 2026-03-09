@@ -109,6 +109,22 @@ class CorrelationAnalysis(BaseModel, frozen=True):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
+# --- Critique ---
+
+
+class DimensionVerdict(BaseModel, frozen=True):
+    dimension: str  # "consistency" | "risk_reward" | "input_respect" | "parameter_sanity"
+    passed: bool
+    reason: str
+
+
+class CritiqueResult(BaseModel, frozen=True):
+    verdicts: list[DimensionVerdict]
+    overall_passed: bool
+    suggestions: list[str]
+    summary: str
+
+
 # --- Trade Proposal ---
 
 
