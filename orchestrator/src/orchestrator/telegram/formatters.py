@@ -150,6 +150,11 @@ def format_proposal(result: PipelineResult) -> str:
         )
         lines.append(f"\n\U0001f4a1 {p.rationale}")
 
+    if result.refinement_rounds > 0:
+        status_word = "passed" if not result.refinement_exhausted else "exhausted"
+        emoji = "\U0001f504" if not result.refinement_exhausted else "\u26a0\ufe0f"
+        lines.append(f"\n{emoji} Refined: {result.refinement_rounds} rounds ({status_word})")
+
     if result.model_used:
         lines.append(f"\nModel: {result.model_used.split('/')[-1]}")
 

@@ -553,6 +553,7 @@ class SentinelBot:
 
         model_override: str | None = self._premium_model or None
         symbol_args: list[str] = []
+        refinement = False
 
         for arg in args:
             lower = arg.lower()
@@ -560,6 +561,8 @@ class SentinelBot:
                 model_override = MODEL_ALIASES[lower]
             elif lower.startswith("anthropic/"):
                 model_override = lower
+            elif lower == "refine":
+                refinement = True
             else:
                 symbol_args.append(arg)
 
@@ -583,7 +586,7 @@ class SentinelBot:
         try:
             results = await self._scheduler.run_once(
                 symbols=symbols, model_override=model_override,
-                source="command", notify=False,
+                source="command", notify=False, refinement=refinement,
             )
         finally:
             self._running_symbols.difference_update(symbols)
