@@ -8,6 +8,8 @@ from orchestrator.llm.client import LLMCallResult
 from orchestrator.models import (
     CatalystReport,
     CorrelationAnalysis,
+    CritiqueResult,
+    DimensionVerdict,
     EntryOrder,
     Momentum,
     PositioningAnalysis,
@@ -18,7 +20,6 @@ from orchestrator.models import (
     Trend,
     VolatilityRegime,
 )
-from orchestrator.models import CritiqueResult, DimensionVerdict
 from orchestrator.pipeline.refinement import RefinementLoop, RefinementResult
 from orchestrator.pipeline.runner import PipelineResult, PipelineRunner
 

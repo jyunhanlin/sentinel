@@ -180,8 +180,6 @@ class PipelineRunner:
 
             refinement_result = None
             if refinement and self._refinement_loop is not None:
-                from orchestrator.pipeline.refinement import RefinementResult
-
                 refinement_result = await self._refinement_loop.run(**analysis_kwargs)
                 for call in refinement_result.all_llm_calls:
                     self._llm_call_repo.save_call(

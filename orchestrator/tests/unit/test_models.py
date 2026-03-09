@@ -140,7 +140,10 @@ class TestCritiqueResult:
 
     def test_critique_result_with_failures(self):
         verdicts = [
-            DimensionVerdict(dimension="consistency", passed=False, reason="Side contradicts analysis"),
+            DimensionVerdict(
+                dimension="consistency", passed=False,
+                reason="Side contradicts analysis",
+            ),
             DimensionVerdict(dimension="risk_reward", passed=True, reason="ok"),
         ]
         cr = CritiqueResult(

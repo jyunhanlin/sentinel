@@ -99,7 +99,8 @@ PASS_RESPONSE = (
 
 FAIL_RESPONSE = (
     '```json\n{"verdicts": ['
-    '{"dimension": "consistency", "passed": false, "reason": "Side is long but momentum is bearish"},'
+    '{"dimension": "consistency", "passed": false,'
+    ' "reason": "Side is long but momentum is bearish"},'
     '{"dimension": "risk_reward", "passed": true, "reason": "ok"},'
     '{"dimension": "input_respect", "passed": true, "reason": "ok"},'
     '{"dimension": "parameter_sanity", "passed": true, "reason": "ok"}'

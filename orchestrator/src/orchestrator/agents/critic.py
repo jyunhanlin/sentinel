@@ -86,10 +86,18 @@ class CriticAgent(BaseAgent[CritiqueResult]):
     def _get_default_output(self) -> CritiqueResult:
         return CritiqueResult(
             verdicts=[
-                DimensionVerdict(dimension="consistency", passed=True, reason="degraded — skipped"),
-                DimensionVerdict(dimension="risk_reward", passed=True, reason="degraded — skipped"),
-                DimensionVerdict(dimension="input_respect", passed=True, reason="degraded — skipped"),
-                DimensionVerdict(dimension="parameter_sanity", passed=True, reason="degraded — skipped"),
+                DimensionVerdict(
+                    dimension="consistency", passed=True, reason="degraded — skipped",
+                ),
+                DimensionVerdict(
+                    dimension="risk_reward", passed=True, reason="degraded — skipped",
+                ),
+                DimensionVerdict(
+                    dimension="input_respect", passed=True, reason="degraded — skipped",
+                ),
+                DimensionVerdict(
+                    dimension="parameter_sanity", passed=True, reason="degraded — skipped",
+                ),
             ],
             overall_passed=True,
             suggestions=[],
