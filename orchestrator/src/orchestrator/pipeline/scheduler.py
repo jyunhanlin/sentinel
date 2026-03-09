@@ -53,13 +53,16 @@ class PipelineScheduler:
         model_override: str | None = None,
         source: str = "scheduler",
         notify: bool = True,
+        refinement: bool = False,
     ) -> list[PipelineResult]:
         target_symbols = symbols or self.symbols
         effective_model = model_override or self._runner_default_model or "default"
 
         async def _run_symbol(symbol: str) -> PipelineResult:
             logger.info("pipeline_running", symbol=symbol, model=effective_model, source=source)
-            result = await self._runner.execute(symbol, model_override=model_override)
+            result = await self._runner.execute(
+                symbol, model_override=model_override, refinement=refinement,
+            )
             logger.info(
                 "pipeline_done", symbol=symbol,
                 model=effective_model, status=result.status, source=source,
@@ -77,7 +80,7 @@ class PipelineScheduler:
     async def _run_daily_premium(self) -> None:
         """Daily deep analysis using premium model (Opus)."""
         logger.info("daily_premium_start", model=self.premium_model)
-        await self.run_once(model_override=self.premium_model)
+        await self.run_once(model_override=self.premium_model, refinement=True)
 
     def start(self) -> None:
         self._scheduler = AsyncIOScheduler()

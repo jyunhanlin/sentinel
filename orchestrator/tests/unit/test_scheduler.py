@@ -46,7 +46,9 @@ class TestPipelineScheduler:
         results = await scheduler.run_once(symbols=["BTC/USDT:USDT"])
 
         assert len(results) == 1
-        mock_runner.execute.assert_called_once_with("BTC/USDT:USDT", model_override=None)
+        mock_runner.execute.assert_called_once_with(
+            "BTC/USDT:USDT", model_override=None, refinement=False,
+        )
 
     @pytest.mark.asyncio
     async def test_run_once_with_model_override(self):
@@ -67,7 +69,8 @@ class TestPipelineScheduler:
 
         assert len(results) == 1
         mock_runner.execute.assert_called_once_with(
-            "BTC/USDT:USDT", model_override="anthropic/claude-opus-4-6"
+            "BTC/USDT:USDT", model_override="anthropic/claude-opus-4-6",
+            refinement=False,
         )
 
     @pytest.mark.asyncio
@@ -85,7 +88,8 @@ class TestPipelineScheduler:
         await scheduler._run_daily_premium()
 
         mock_runner.execute.assert_called_once_with(
-            "BTC/USDT:USDT", model_override="anthropic/claude-opus-4-6"
+            "BTC/USDT:USDT", model_override="anthropic/claude-opus-4-6",
+            refinement=True,
         )
 
 

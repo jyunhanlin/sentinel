@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     price_monitor_interval_seconds: int = 300  # check every N seconds
     price_monitor_enabled: bool = True
 
+    # Refinement Loop
+    refinement_enabled: bool = False
+    refinement_max_rounds: int = 2
+
     # Semi-auto Trading
     trading_mode: str = "paper"                    # "paper" | "live"
     approval_timeout_minutes: int = 15

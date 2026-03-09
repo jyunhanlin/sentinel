@@ -10,6 +10,7 @@ from sqlmodel import Session
 
 from orchestrator.agents.catalyst import CatalystAgent
 from orchestrator.agents.correlation import CorrelationAgent
+from orchestrator.agents.critic import CriticAgent
 from orchestrator.agents.positioning import PositioningAgent
 from orchestrator.agents.proposer import ProposerAgent
 from orchestrator.agents.technical import TechnicalAgent
@@ -26,6 +27,7 @@ from orchestrator.execution.position_sizer import RiskPercentSizer
 from orchestrator.llm.backend import ClaudeCLIBackend, LiteLLMBackend
 from orchestrator.llm.client import LLMClient
 from orchestrator.logging import setup_logging
+from orchestrator.pipeline.refinement import RefinementLoop
 from orchestrator.pipeline.runner import PipelineRunner
 from orchestrator.pipeline.scheduler import PipelineScheduler
 from orchestrator.stats.calculator import StatsCalculator
@@ -73,6 +75,9 @@ def create_app_components(
     claude_cli_path: str = "claude",
     claude_cli_timeout: int = 120,
     trade_margin_amount: float = 500.0,
+    # Refinement Loop
+    refinement_enabled: bool = False,
+    refinement_max_rounds: int = 2,
     # Semi-auto Trading
     trading_mode: str = "paper",
     approval_timeout_minutes: int = 15,
@@ -112,6 +117,16 @@ def create_app_components(
     catalyst_agent = CatalystAgent(client=llm_client, max_retries=llm_max_retries)
     correlation_agent = CorrelationAgent(client=llm_client, max_retries=llm_max_retries)
     proposer_agent = ProposerAgent(client=llm_client, max_retries=llm_max_retries)
+    critic_agent = CriticAgent(client=llm_client, max_retries=llm_max_retries)
+
+    # Refinement Loop
+    refinement_loop: RefinementLoop | None = None
+    if refinement_enabled:
+        refinement_loop = RefinementLoop(
+            proposer=proposer_agent,
+            critic=critic_agent,
+            max_rounds=refinement_max_rounds,
+        )
 
     # Exchange & External Data
     exchange_client = ExchangeClient(exchange_id=exchange_id)
@@ -198,6 +213,7 @@ def create_app_components(
         paper_engine=paper_engine,
         approval_manager=approval_manager,
         execution_planner=execution_planner,
+        refinement_loop=refinement_loop,
     )
 
     scheduler = PipelineScheduler(
@@ -263,6 +279,8 @@ def _build_components(settings: Settings) -> dict[str, Any]:
         paper_taker_fee_rate=settings.paper_taker_fee_rate,
         paper_maker_fee_rate=settings.paper_maker_fee_rate,
         trade_margin_amount=settings.trade_margin_amount,
+        refinement_enabled=settings.refinement_enabled,
+        refinement_max_rounds=settings.refinement_max_rounds,
         trading_mode=settings.trading_mode,
         approval_timeout_minutes=settings.approval_timeout_minutes,
         price_deviation_threshold=settings.price_deviation_threshold,
