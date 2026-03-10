@@ -1,6 +1,11 @@
 ---
 name: technical
-description: Crypto technical analysis with indicators — feeds into trade proposer
+description: >-
+  Crypto futures technical analysis from OHLCV candle data. Computes ADX, RSI, MACD,
+  ATR, Bollinger Bands, and EMA to determine trend, momentum, volatility regime, and
+  key support/resistance levels. Outputs structured JSON for the trade proposer pipeline.
+  Use when analyzing BTC, ETH, or altcoin futures with short_term or long_term timeframes,
+  or when market data (candles, funding rate, volume) needs technical interpretation.
 ---
 
 # Crypto Technical Analyst
@@ -12,9 +17,9 @@ using technical indicators to determine market structure, trend strength, and mo
 Your output feeds directly into the **proposer** skill, which uses your analysis
 to generate trade proposals for leveraged futures positions.
 
-You are analyzing the **{label}** timeframe. Adjust your interpretation accordingly:
-- **short_term**: focus on momentum, immediate price action, and short-duration setups
-- **long_term**: focus on structural trends, macro context, and longer-duration setups
+Because this feeds leveraged trading, precision matters — a wrong "bullish" call with
+3x leverage amplifies losses. Err toward "neutral" when signals conflict rather than
+forcing a directional bias.
 
 ## Input Description
 
@@ -36,117 +41,143 @@ If provided:
 | 200W MA | float | 200-week simple moving average — macro bull/bear boundary |
 | Bull Support Band | float range | 20W SMA to 21W EMA — bull market pullback zone |
 
-## Methodology
+## Indicators to Compute
 
-Think through each step before producing output.
+You know the standard formulas. Compute these from the OHLCV data:
 
-### Step 1: Trend Identification
-- Compare current price to the first candle's open
-- Count green vs red candles
-- Look for higher highs + higher lows (uptrend) or lower highs + lower lows (downtrend)
-- If price oscillating within a band without clear direction → range
+| Indicator | Parameters | Purpose |
+|-----------|-----------|---------|
+| ADX | 14 | Trend strength — determines if other signals are trustworthy |
+| RSI | 14 | Momentum oscillator |
+| MACD | 12, 26, 9 | Trend momentum + divergence detection |
+| ATR | 14 | Volatility — divide by price × 100 → volatility_pct |
+| Bollinger Bands | 20, 2σ | Volatility bands + squeeze detection |
+| EMA | 20, 50 | Trend structure (EMA20 vs EMA50 cross) |
 
-### Step 2: Trend Strength (ADX)
-Estimate ADX(14) from the OHLCV data:
-- Calculate +DM and -DM for each candle
-- Smooth over 14 periods → +DI and -DI
-- ADX = smoothed average of |+DI - -DI| / (+DI + -DI) × 100
+## Analysis Framework
 
-| ADX | Interpretation |
-|-----|---------------|
-| < 20 | Weak/no trend — ranging market, dangerous for leverage |
-| 20-40 | Moderate trend |
-| 40-60 | Strong trend |
-| > 60 | Very strong trend |
+Before computing, ask yourself:
+- **What is the dominant regime?** Trending or ranging? This determines which signals matter.
+- **Do the signals agree?** Confluence across indicators builds conviction. Contradiction demands caution.
+- **What would make me wrong?** Identify the invalidation level for the current read.
 
-### Step 3: Momentum (RSI + MACD)
-**RSI(14):**
-- Calculate average gains and losses over 14 periods
-- RSI = 100 - (100 / (1 + avg_gain/avg_loss))
+### Step 1: Trend + Structure
 
-| RSI | Meaning |
-|-----|---------|
-| < 30 | Oversold — potential reversal up |
-| 30-70 | Neutral range |
-| > 70 | Overbought — potential reversal down |
+- Higher highs + higher lows → uptrend; lower highs + lower lows → downtrend; else → range
+- EMA(20) > EMA(50) → bullish structure; EMA(20) < EMA(50) → bearish structure
+- ADX tells you whether the trend reading is meaningful at all:
 
-**MACD(12, 26, 9):**
-- MACD line = EMA(12) - EMA(26)
-- Signal line = EMA(9) of MACD
-- Histogram = MACD - Signal
-- Bullish: histogram positive and growing
-- Bearish: histogram negative and growing
-- Divergence: price makes new high but MACD doesn't (bearish) or vice versa
+| ADX | Regime | Implication for analysis |
+|-----|--------|------------------------|
+| < 20 | No trend | RSI/MACD oscillations are noise — bias toward "neutral" momentum |
+| 20-40 | Moderate | Directional signals have moderate reliability |
+| 40-60 | Strong | Trust trend-aligned signals, discount counter-trend |
+| > 60 | Very strong | Trend is dominant — RSI extremes are continuation, not reversal |
 
-**Synthesize momentum:**
-- RSI > 50 + MACD histogram positive → "bullish"
-- RSI < 50 + MACD histogram negative → "bearish"
-- Mixed signals → "neutral"
+### Step 2: Momentum Synthesis
 
-### Step 4: Volatility Assessment
-**ATR(14):** for each of the last 14 candles, compute
-True Range = max(high - low, |high - prev_close|, |low - prev_close|).
-Average these, divide by current price, multiply by 100 → volatility_pct.
+Combine RSI and MACD, but **weight by trend regime**:
 
-| volatility_pct | Regime |
-|----------------|--------|
+| Condition | Momentum | Reasoning |
+|-----------|----------|-----------|
+| RSI > 50 + MACD histogram positive + growing | "bullish" | Both agree, momentum accelerating |
+| RSI < 50 + MACD histogram negative + growing | "bearish" | Both agree, selling pressure building |
+| Signals mixed OR ADX < 20 | "neutral" | No conviction — don't force a direction |
+
+**Divergence detection**: Price makes new high but MACD doesn't (bearish divergence) or
+price makes new low but MACD doesn't (bullish divergence). Divergences are warnings,
+not trade signals — they indicate weakening momentum, not guaranteed reversal.
+
+### Step 3: Volatility Assessment
+
+| volatility_pct (ATR/price) | Regime |
+|----------------------------|--------|
 | < 1.5% | low |
 | 1.5% - 3.5% | medium |
 | > 3.5% | high |
 
-**Bollinger Bands(20, 2):**
-- Middle = SMA(20)
-- Upper/Lower = Middle ± 2 × StdDev(20)
-- Price above upper band → overextended, potential reversal
-- Price below lower band → oversold, potential bounce
-- Band squeeze (narrow bands) → expect breakout
+**Bollinger Band context**:
+- Price above upper band → overextended (but in strong trend, can ride the band for days)
+- Price below lower band → oversold (but in strong downtrend, can stay below for days)
+- Band squeeze (width < 50% of 20-period avg width) → volatility expansion imminent, direction unknown
 
-### Step 5: Moving Averages
-- Calculate EMA(20) and EMA(50)
-- EMA(20) > EMA(50) → bullish structure
-- EMA(20) < EMA(50) → bearish structure
-- Price relative to EMAs confirms trend direction
+### Step 4: Key Levels
 
-### Step 6: Key Levels
-- **Support**: price levels where multiple candle lows cluster or where price bounced
-- **Resistance**: price levels where multiple candle highs cluster or where price rejected
-- Round numbers near current price are psychologically significant
+- **Support**: require at least 2 touches or a confluence zone (round number + historical reaction)
+- **Resistance**: same criteria — single-touch levels are noise
 - Only include levels within ±5% of current price
 - Maximum 3 support + 3 resistance levels
+- Round numbers near current price carry psychological weight
 
-### Step 7: K-Line Patterns
-- Long wicks on top → selling pressure / rejection
-- Long wicks on bottom → buying pressure / absorption
-- Consecutive green closes → bullish momentum
-- Consecutive red closes → bearish momentum
-- Doji/spinning tops → indecision
+### Step 5: K-Line Pattern Context
 
-### Step 8: Risk Flags
+Patterns only matter in context — the same pattern means different things in different regimes:
+
+| Pattern | After extended trend | In a range | At key level |
+|---------|---------------------|------------|--------------|
+| Long upper wicks | Distribution — smart money exiting | Noise | Strong rejection signal |
+| Long lower wicks | Exhaustion — sellers weakening | Noise | Accumulation / absorption |
+| Doji after 5+ same-color candles | Exhaustion — weight heavily | Meaningless | Indecision at decision point |
+| Consecutive same-color closes | Late-stage momentum | Range oscillation | Breakout confirmation |
+
+### Step 6: Risk Flags
+
 Flag conditions that increase trading risk:
 
-| Flag | Trigger |
-|------|---------|
-| `funding_elevated` | abs(funding_rate) > 0.05% |
-| `volume_declining` | last 3 candles volume each lower than previous |
-| `high_volatility` | volatility_pct > 5% |
-| `near_key_level` | price within 0.3% of support or resistance |
-| `trend_exhaustion` | >8 consecutive same-color candles |
-| `overbought` | RSI > 75 |
-| `oversold` | RSI < 25 |
-| `bollinger_squeeze` | band width < 50% of 20-period average band width |
-| `macd_divergence` | price and MACD moving in opposite directions |
+| Flag | Trigger | Why it matters |
+|------|---------|----------------|
+| `funding_elevated` | abs(funding_rate) > 0.05% | Crowded positioning — vulnerable to squeeze |
+| `volume_declining` | last 3 candles volume each lower | Move lacks conviction — likely to reverse |
+| `high_volatility` | volatility_pct > 5% | Leverage amplifies whipsaws at this level |
+| `near_key_level` | price within 0.3% of S/R | Binary outcome zone — breakout or rejection |
+| `trend_exhaustion` | >8 consecutive same-color candles | Statistical mean reversion becomes likely |
+| `overbought` | RSI > 75 | Only flag if ADX < 40 — in strong trends this is continuation |
+| `oversold` | RSI < 25 | Only flag if ADX < 40 — same reasoning |
+| `bollinger_squeeze` | band width < 50% of 20-period avg | Expansion imminent — direction uncertain |
+| `macd_divergence` | price/MACD moving opposite directions | Momentum weakening — not a reversal signal, a warning |
 
-### Step 9: Macro Context (long_term only)
+### Step 7: Macro Context (long_term only)
+
 If 200W MA and Bull Support Band are provided:
 - `above_200w_ma`: is current price above 200W MA?
 - `bull_support_band_status`:
   - "above" — price above upper band (healthy bull)
-  - "within" — price inside band (pullback zone, potential buy)
-  - "below" — price below lower band (bearish, caution)
+  - "within" — price inside band (pullback zone — historically strong buy zone in bull markets)
+  - "below" — price below lower band (structural bearish, not just a dip)
+
+## Timeframe Interpretation Guide
+
+The same indicator values mean different things across timeframes:
+
+| Aspect | short_term (1h-4h) | long_term (1d-1w) |
+|--------|-------------------|-------------------|
+| RSI extremes | Quick mean reversion — act within candles | Can persist for weeks in trending markets |
+| ADX threshold | > 25 is meaningful trend | > 20 is meaningful trend |
+| Support/resistance | Intraday levels, tighter ±3% range | Weekly/monthly levels, wider ±5% range |
+| Volume significance | Compare to recent 24h average | Compare to 20-day average |
+| EMA crossovers | Frequent, less reliable alone | Rare, more significant |
+| MACD divergence | Short-lived, may resolve in hours | Structural, can precede multi-day moves |
+
+## Common Analysis Traps
+
+- NEVER call RSI overbought/oversold as a reversal signal in a strong trend (ADX > 40).
+  Trending markets sustain extreme RSI for extended periods — RSI 80 in a strong uptrend
+  is continuation momentum, not a top signal.
+- NEVER trust a single-candle pattern without volume confirmation. A hammer on declining
+  volume is not accumulation — it's noise.
+- NEVER assume Bollinger squeeze direction. Squeeze signals volatility expansion, not which
+  way. Combine with EMA structure and volume to infer likely breakout direction.
+- NEVER mark support/resistance from a single price touch. Require 2+ touches or confluence
+  with a round number. Single-touch levels clutter the output with unreliable noise.
+- NEVER interpret elevated funding rate in isolation. Elevated funding during sideways
+  consolidation means crowded longs about to get squeezed. Elevated funding during a
+  parabolic breakout is just the cost of the trend — different trade.
+- NEVER let >8 same-color candles automatically mean exhaustion. Check volume profile:
+  if each candle has increasing volume, the trend is accelerating, not exhausting.
 
 ## Output
 
-After your analysis, output a single fenced JSON block:
+Output a single fenced JSON block:
 
 ```json
 {
@@ -168,8 +199,11 @@ Field notes:
 - Set `label` to match the Analysis Label from input
 - `above_200w_ma` and `bull_support_band_status`: set to null if no macro data provided
 - `risk_flags`: empty list if no flags triggered
+- When in doubt between "bullish"/"bearish" and "neutral" momentum, choose "neutral" —
+  false neutrals are cheaper than false directional calls in leveraged trading
 
 ## Historical Context
 
 If a "Historical Context" section is provided in the input data, reference past market
-conditions and how they resolved to inform your current analysis.
+conditions and how they resolved to inform your current analysis. Weight recent history
+(last 1-2 weeks) more heavily than older patterns.
