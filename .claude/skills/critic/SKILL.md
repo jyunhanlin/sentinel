@@ -64,11 +64,11 @@ Before checking dimensions mechanically, step back and ask yourself:
 |---------|------------|
 | Proposal | symbol, side, entry, stop_loss, take_profit, position_size_risk_pct, suggested_leverage, confidence, time_horizon, rationale |
 | Market Context | current_price, volume_24h, funding_rate |
-| Short-Term Technical | trend, trend_strength (ADX), momentum, rsi, volatility_regime, volatility_pct, risk_flags |
-| Long-Term Technical | trend, trend_strength (ADX), momentum, rsi, volatility_regime, volatility_pct, risk_flags |
-| Positioning | funding_trend, funding_extreme, oi_change_pct, squeeze_risk, risk_flags, confidence |
-| Catalyst | risk_level, recommendation, confidence |
-| Correlation | dxy_trend, dxy_impact, sp500_regime, cross_market_alignment, risk_flags, confidence |
+| Short-Term Technical | trend, trend_strength (ADX), momentum, rsi, volatility_regime, volatility_pct, risk_flags, confidence, data_caveats |
+| Long-Term Technical | trend, trend_strength (ADX), momentum, rsi, volatility_regime, volatility_pct, risk_flags, confidence, data_caveats |
+| Positioning | funding_trend, funding_extreme, oi_change_pct, squeeze_risk, squeeze_severity, risk_flags, confidence, data_caveats |
+| Catalyst | risk_level, recommendation, confidence, data_caveats |
+| Correlation | dxy_trend, dxy_impact, sp500_regime, cross_market_alignment, risk_flags, confidence, data_caveats |
 
 ## Evaluation Dimensions
 
@@ -151,6 +151,8 @@ Soft failures (2+ combined triggers FAIL):
 - >= 2 analysis sources have non-empty risk_flags without acknowledgment in rationale
 - `catalyst.risk_level == "high"` without size reduction
 - Any analysis source has confidence < 0.3 (low-quality input, proposal should note it)
+- >= 2 analysis sources have non-empty data_caveats without acknowledgment in rationale or proposal data_caveats
+- `positioning.squeeze_severity == "high"` and leverage > 5x
 
 The spirit of this dimension: upstream analyses spent significant effort identifying
 risks. If the proposal doesn't mention or adjust for them, it hasn't done its job.

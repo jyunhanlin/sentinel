@@ -209,7 +209,9 @@ Output a single fenced JSON block:
   "key_levels": [{"type": "support" | "resistance", "price": <float>}],
   "risk_flags": ["<flag_name>"],
   "above_200w_ma": <bool | null>,
-  "bull_support_band_status": "above" | "within" | "below" | null
+  "bull_support_band_status": "above" | "within" | "below" | null,
+  "confidence": <float 0.1-0.95>,
+  "data_caveats": ["<string>"]
 }
 ```
 
@@ -219,6 +221,17 @@ Field notes:
 - `risk_flags`: empty list if no flags triggered
 - When in doubt between "bullish"/"bearish" and "neutral" momentum, choose "neutral" —
   false neutrals are cheaper than false directional calls in leveraged trading
+- `confidence`: start at 0.5, then adjust:
+  - +0.15 if ADX > 25 and trend/momentum agree
+  - +0.10 if volume confirms (rising on trend candles)
+  - +0.05 if key levels provide clear invalidation
+  - −0.15 if candle count < 50 (indicators less reliable)
+  - −0.10 if anomalous candles detected
+  - −0.05 if volume is declining
+  - Clamp to [0.1, 0.95]
+- `data_caveats`: list data quality issues encountered during analysis
+  (e.g., "insufficient_candles_for_macd", "low_liquidity_token", "anomalous_candle_excluded",
+  "volume_data_unreliable"). Empty list if no issues
 
 ## Historical Context
 

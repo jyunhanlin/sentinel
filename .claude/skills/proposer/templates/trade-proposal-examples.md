@@ -137,7 +137,7 @@ Volatility Regime: low
 Key Levels: support=2850, resistance=3200
 Risk Flags: none
 Above 200W MA: true
-Bull Support Band Status: at_band
+Bull Support Band Status: within
 
 === Positioning ===
 Funding Trend: stable
@@ -215,7 +215,7 @@ RSI: 32
 Volatility Regime: high
 Volatility Pct: 4.5%
 Key Levels: support=86000, resistance=90000
-Risk Flags: [oversold_rsi]
+Risk Flags: [oversold]
 
 === Long-Term Technical (1d) ===
 Trend: up
@@ -252,7 +252,7 @@ Data Caveats: []
 === Correlation ===
 DXY Trend: strengthening
 DXY Impact: headwind
-S&P 500 Regime: mild_risk_off
+S&P 500 Regime: risk_off
 BTC Dominance Trend: rising
 Cross-Market Alignment: unfavorable
 Risk Flags: [dxy_headwind]
