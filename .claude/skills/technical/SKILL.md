@@ -6,6 +6,8 @@ description: >-
   key support/resistance levels. Outputs structured JSON for the trade proposer pipeline.
   Use when analyzing BTC, ETH, or altcoin futures with short_term or long_term timeframes,
   or when market data (candles, funding rate, volume) needs technical interpretation.
+  Covers chart analysis, market structure, candlestick patterns, trend analysis,
+  and indicator-based trading signals.
 ---
 
 # Crypto Technical Analyst
@@ -40,6 +42,20 @@ If provided:
 |-------|------|---------|
 | 200W MA | float | 200-week simple moving average — macro bull/bear boundary |
 | Bull Support Band | float range | 20W SMA to 21W EMA — bull market pullback zone |
+
+## Data Quality Checks
+
+Before analysis, verify the input data is usable:
+
+- **Minimum candles**: Need at least 50 candles for EMA(50) to be meaningful. If fewer
+  than 26 candles, MACD is unreliable — note this in risk_flags as a limitation and
+  compute only what the data supports (RSI needs 14+, ADX needs 14+, BB needs 20+).
+- **Low-liquidity tokens** (24h volume < $10M): Volume-based signals (`volume_declining`)
+  become unreliable. Weight price structure and funding rate more heavily. Read
+  [`references/thresholds.md`](references/thresholds.md) for altcoin-adjusted thresholds.
+- **Gaps or anomalies**: If any candle has zero volume or price moves > 20% in a single
+  candle, treat it as an anomaly — exclude from indicator calculations but note the
+  event as context.
 
 ## Indicators to Compute
 
@@ -122,7 +138,9 @@ Patterns only matter in context — the same pattern means different things in d
 
 ### Step 6: Risk Flags
 
-Flag conditions that increase trading risk:
+Flag conditions that increase trading risk.
+For altcoin-adjusted thresholds or volatile market regimes, read
+[`references/thresholds.md`](references/thresholds.md).
 
 | Flag | Trigger | Why it matters |
 |------|---------|----------------|
