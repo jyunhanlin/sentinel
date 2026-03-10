@@ -2,9 +2,11 @@
 name: positioning
 description: >-
   Crypto futures positioning and order flow analysis — funding rates, open interest,
-  long/short ratios, squeeze risk, and liquidity depth. Use when analyzing derivatives
-  positioning data, assessing crowding or squeeze risk, interpreting funding rate trends,
-  evaluating order book imbalance, or deciding leverage sizing. Feeds into trade proposer.
+  long/short ratios, squeeze risk, and liquidity depth. MUST be used when analyzing
+  derivatives positioning data, assessing crowding or squeeze risk, interpreting funding
+  rate trends, evaluating order book imbalance, or deciding leverage sizing. Also use
+  when user mentions liquidation risk, overleveraged positions, or market participant
+  behavior. Feeds into trade proposer.
 ---
 
 # Crypto Positioning Analyst
@@ -105,6 +107,22 @@ Squeeze risk isn't binary — it's a confluence of conditions:
 | Extreme L/S (>2.0 or <0.5) + thin liquidity | Either direction | Critical — cascading liquidations likely |
 | Moderate crowding + deep liquidity | Low risk | Market can absorb the unwind |
 
+### Conflicting Signals
+
+When signals genuinely contradict each other (e.g., retail long + smart money long +
+funding falling, or OI rising + price flat), don't force a narrative:
+
+| Conflict Type | Resolution |
+|---------------|------------|
+| Funding vs L/S disagree | Weight L/S more — funding can lag by 8h+ |
+| Retail vs smart money agree but OI falling | Positioning is unwinding despite consensus — likely late-cycle |
+| 3+ signals point different directions | Set `squeeze_risk: "none"`, reduce confidence by 0.15, note in `data_caveats` |
+| All signals neutral / no extremes | This is a valid finding — report it. Not every market is positioned for a move. |
+
+The worst analytical mistake is forcing a directional read when the data says "unclear."
+Report ambiguity honestly — the proposer downstream handles uncertainty better than
+false conviction.
+
 ### Liquidity Assessment
 
 Compare bid_depth vs ask_depth:
@@ -135,9 +153,11 @@ Compare bid_depth vs ask_depth:
 - **NEVER assume "crowded" = "imminent reversal"** — crowded positions in trending
   markets can persist for weeks. The catalyst matters more than the state. Always check
   what would TRIGGER the unwind.
-- **NEVER compare OI change % across different symbols without context** — altcoin OI
-  routinely swings 10-20% daily while BTC moves 2-3%. A 5% OI increase on BTC is
-  significant; on a mid-cap alt it's Tuesday.
+- **NEVER compare OI change % across different symbols without normalizing** — altcoin OI
+  routinely swings 10-20% daily while BTC moves 2-3%. Rule of thumb: BTC OI change >3%
+  is notable, >5% is significant. For top-10 alts, threshold is ~8%. For mid/small-cap
+  alts, only >15% is meaningful. A 5% OI increase on BTC is a major positioning shift;
+  on a mid-cap alt it's Tuesday.
 - **NEVER treat order book depth as durable** — large resting orders can be pulled in
   milliseconds. Use depth as a snapshot indicator, not a guarantee.
 - **NEVER output high confidence when key fields are missing** — incomplete data means
