@@ -56,6 +56,8 @@ Before applying any thresholds, establish context by asking yourself:
 | sp500_data.trend_5d | float[] | 5-day S&P 500 closing values |
 | btc_dominance.current | float | Current BTC market cap dominance % |
 | btc_dominance.change_7d | float | 7-day change in BTC dominance % |
+| total_mcap | float? | Total crypto market cap in USD (optional — needed for dominance context) |
+| upcoming_events | string[]? | Known macro events within 24h, e.g. ["FOMC", "CPI"] (optional) |
 
 ## Analysis Framework
 
@@ -121,7 +123,8 @@ entirely on the symbol being analyzed:
 **For altcoin pairs (ETH, SOL, etc.) — reverse the interpretation:**
 Rising BTC dominance = bearish for alts; falling = bullish for alts.
 
-**Critical nuance**: Always check dominance change ALONGSIDE total market cap change:
+**Critical nuance**: If `total_mcap` is provided, check dominance change ALONGSIDE it.
+If absent, note this limitation in `data_caveats` — dominance alone is ambiguous:
 - Dominance rising + total mcap rising = BTC attracting new capital (healthy)
 - Dominance rising + total mcap falling = alts crashing harder than BTC (flight to safety within crypto)
 - Dominance falling + total mcap rising = alt season (risk-on within crypto)
@@ -153,6 +156,10 @@ BTC dominance direction appropriately.
 
 For short positions, invert the alignment assessment.
 
+When readings fall near threshold boundaries (e.g., DXY at exactly +0.3%, S&P at +0.5%),
+the table is a starting heuristic, not a mechanical rule — fall back to the thinking
+framework in "How to Think About Correlation" and weight the overall macro narrative.
+
 ### Step 5: Conflicting Signals
 
 When DXY and S&P genuinely contradict (DXY weakening + S&P falling, or DXY
@@ -178,7 +185,7 @@ than false conviction.
 | `risk_off_environment` | S&P change < -1.0% | Broad de-risking — leveraged crypto positions are vulnerable |
 | `dominance_shift` | abs(BTC.D change 7d) > 2.0% | Major capital rotation underway — directional trades on the wrong side get crushed |
 | `correlation_breakdown` | Traditional and crypto moving in unusual tandem (both falling, or BTC falling while DXY falls) | Historical correlations unreliable — reduce conviction on macro-based calls |
-| `macro_event_proximity` | Known event within 24h (FOMC, CPI, NFP) | Correlations destabilize around announcements — regime can flip intraday |
+| `macro_event_proximity` | `upcoming_events` is non-empty, or analyst is aware of FOMC/CPI/NFP within 24h | Correlations destabilize around announcements — regime can flip intraday |
 
 ## Common Analysis Traps
 
