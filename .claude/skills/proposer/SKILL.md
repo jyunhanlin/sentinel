@@ -98,7 +98,8 @@ Count how many sources support a directional trade. Not all sources carry equal 
 - Positioning does not show squeeze risk against your direction, AND
 - At least 3/5 sources lean same direction (neutral counts as non-opposing)
 
-**No edge (flat):**
+**No edge (flat)** — if ANY of these apply, skip Steps 3-9 and go directly to Output
+with side="flat":
 - ST and LT trends conflict with no clear dominant signal
 - Both ADX values < 20 (no trend in either timeframe)
 - Positioning shows squeeze risk in your intended direction with severity ≥ "high"
@@ -123,6 +124,10 @@ When upstream sources disagree, use this matrix instead of forcing a narrative:
 | Correlation "unfavorable" + everything else aligned | Trade but acknowledge macro headwind | ×0.75 size |
 | Multiple sources have low confidence or data_caveats | Reduce YOUR confidence proportionally — garbage in, garbage out | ×0.5 minimum |
 
+> For worked examples of conflict resolution (including a case where a tempting squeeze
+> setup correctly resolves to flat), see Example 3 in
+> [`templates/trade-proposal-examples.md`](templates/trade-proposal-examples.md).
+
 ### Step 4: Direction & Entry
 
 If an edge exists:
@@ -131,11 +136,13 @@ If an edge exists:
 - Mixed signals → lean toward LT trend direction, reduce size per Step 3
 
 Entry type:
-- **Market entry**: default when price is away from key levels and momentum is active
-- **Limit entry**: when price is near a key level where a pullback is likely
-  - For long: limit at nearest ST support level
-  - For short: limit at nearest ST resistance level
-  - Set invalidation time (entry not filled within 2-4h = cancel)
+
+| Condition | Entry Type | Why |
+|-----------|-----------|-----|
+| Momentum active + price away from key levels | Market | Don't wait — momentum confirms direction |
+| Price within 0.5% of ST support (long) or resistance (short) | Limit at that level | Let price come to you for better R:R |
+| Volatility > 4% | Market only | Limit orders miss in fast markets — by the time price returns, the move is over |
+| Low conviction / marginal edge | Limit | Forces better entry; if not filled within 2-4h, the setup expired → cancel |
 
 ### Step 5: Stop Loss
 
@@ -358,3 +365,6 @@ read [`templates/trade-proposal-examples.md`](templates/trade-proposal-examples.
 - You're unsure how to handle a specific signal combination
 - You want to verify your output format matches expectations
 - You need a reference for how rationale should read
+
+**Do NOT load** templates if all 5 sources clearly align and the proposal is
+straightforward — you already have everything you need in the methodology above.
