@@ -57,7 +57,8 @@ Before classifying anything, establish context by asking yourself:
 ### Step 1: Event Classification
 
 For each event, classify impact based on **historical volatility potential**, not generic
-importance labels:
+importance labels. For detailed reaction patterns and base rates for each event type,
+read [`references/event-patterns.md`](references/event-patterns.md).
 
 | Impact | Event Types | Why This Level |
 |--------|-------------|---------------|
@@ -107,18 +108,14 @@ uncertainty in leveraged trading.
 
 ### Step 4: Active Events
 
-Identify events currently unfolding. Active events are more dangerous than upcoming ones
-because the market is reacting in real-time and positioning shifts are unpredictable.
+Active events are more dangerous than upcoming ones — the market is reacting in real-time
+and reversals are common as new information emerges. Default to `direction_bias: "uncertain"`
+for active events unless the outcome is already determined (e.g., hack confirmed and
+quantified, rate decision announced).
 
-Types of active events:
-- Ongoing regulatory hearings or court decisions
-- Multi-day conferences with scheduled announcements
-- Developing security incidents (exchange hacks, exploits)
-- Active stablecoin depegs or liquidity crises
-- Cascading liquidation events
-
-For active events, the direction bias is often "uncertain" even if the initial reaction
-seems clear — reversals during active events are common as new information emerges.
+Cascading liquidation events deserve special attention: the initial 2h are the most
+dangerous because forced selling creates a reflexive feedback loop (liquidations → price
+drop → more liquidations). After the cascade exhausts, a sharp reversal is common.
 
 ### Step 5: Risk Level Synthesis
 
@@ -210,6 +207,17 @@ Clamp final confidence to [0.1, 0.95]. Never output 0.0 or 1.0.
 - **Token-specific vs market-wide events**: Exchange listings, token unlocks, and protocol
   upgrades affect the specific token, not the entire market. Don't elevate risk for BTC
   because of an altcoin unlock. Match the event scope to the symbol being analyzed.
+- **Events with missing timestamps**: If the economic calendar has events with only dates
+  (no times), assume the worst-case timing window — treat as "within 24h" for the entire
+  day. Note `event_times_approximate` in data_caveats.
+- **Ambiguous exchange announcements**: Announcements like "system upgrade scheduled" or
+  "maintenance window" could be routine or could signal deeper issues (insolvency cover,
+  regulatory compliance). If the exchange has been in the news recently for negative
+  reasons, elevate the announcement's impact by one level and note the uncertainty.
+- **Post-event drift**: Some events (FOMC, CPI) resolve quickly (4-8h), but others
+  (regulatory actions, exchange collapses) create multi-day volatility regimes. If a
+  high-impact event occurred within the last 48h, residual volatility is still elevated —
+  don't treat it as "no events in window."
 
 ## Output
 
@@ -252,6 +260,10 @@ Field notes:
   positioning context not provided, etc.
 
 ## Historical Context
+
+**RECOMMENDED**: Read [`references/event-patterns.md`](references/event-patterns.md) for
+historical base rates on FOMC, CPI, ETF, token unlock, and stablecoin event reactions.
+This is especially valuable when the input includes event types you need precedent data for.
 
 If a "Historical Context" section is provided in the input data, reference how past events
 affected the market to calibrate your risk assessment. Specifically look for:
