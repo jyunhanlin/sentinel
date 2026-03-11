@@ -74,6 +74,7 @@ def create_app_components(
     llm_backend: str = "api",
     claude_cli_path: str = "claude",
     claude_cli_timeout: int = 120,
+    claude_cli_max_concurrent: int = 3,
     trade_margin_amount: float = 500.0,
     # Refinement Loop
     refinement_enabled: bool = False,
@@ -93,7 +94,11 @@ def create_app_components(
 
     # LLM
     if llm_backend == "cli":
-        backend = ClaudeCLIBackend(cli_path=claude_cli_path, timeout=claude_cli_timeout)
+        backend = ClaudeCLIBackend(
+            cli_path=claude_cli_path,
+            timeout=claude_cli_timeout,
+            max_concurrent=claude_cli_max_concurrent,
+        )
     else:
         backend = LiteLLMBackend(api_key=anthropic_api_key)
 
@@ -268,6 +273,7 @@ def _build_components(settings: Settings) -> dict[str, Any]:
         llm_backend=settings.llm_backend,
         claude_cli_path=settings.claude_cli_path,
         claude_cli_timeout=settings.claude_cli_timeout,
+        claude_cli_max_concurrent=settings.claude_cli_max_concurrent,
         llm_model=settings.llm_model,
         llm_model_premium=settings.llm_model_premium,
         llm_temperature=settings.llm_temperature,
