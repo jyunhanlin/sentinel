@@ -165,6 +165,50 @@ class TestBaseAgent:
         assert len(result.llm_calls) == 2  # original + 1 retry
 
     @pytest.mark.asyncio
+    async def test_timeout_degrades_gracefully(self):
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.call.side_effect = TimeoutError("Claude CLI timed out after 600s")
+
+        agent = FakeAgent(client=mock_client, max_retries=1)
+        result = await agent.analyze()
+
+        assert result.degraded is True
+        assert result.output.trend == Trend.RANGE  # default
+        assert len(result.llm_calls) == 0  # no successful calls
+
+    @pytest.mark.asyncio
+    async def test_timeout_retries_then_degrades(self):
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.call.side_effect = [
+            TimeoutError("timed out"),
+            LLMCallResult(
+                content=_VALID_JSON,
+                model="test",
+                input_tokens=100,
+                output_tokens=50,
+                latency_ms=500,
+            ),
+        ]
+
+        agent = FakeAgent(client=mock_client, max_retries=1)
+        result = await agent.analyze()
+
+        assert result.degraded is False
+        assert result.output.trend == Trend.UP
+        assert len(result.llm_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_runtime_error_degrades_gracefully(self):
+        mock_client = AsyncMock(spec=LLMClient)
+        mock_client.call.side_effect = RuntimeError("Claude CLI failed (exit 1)")
+
+        agent = FakeAgent(client=mock_client, max_retries=0)
+        result = await agent.analyze()
+
+        assert result.degraded is True
+        assert result.output.trend == Trend.RANGE
+
+    @pytest.mark.asyncio
     async def test_model_override_passed_to_client(self):
         mock_client = AsyncMock(spec=LLMClient)
         mock_client.call.return_value = LLMCallResult(

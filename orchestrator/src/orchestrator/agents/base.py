@@ -43,7 +43,32 @@ class BaseAgent[T: BaseModel](ABC):
         llm_calls: list[LLMCallResult] = []
 
         for attempt in range(1 + self._max_retries):
-            call_result = await self._client.call(messages, model=model_override)
+            try:
+                call_result = await self._client.call(messages, model=model_override)
+            except (TimeoutError, RuntimeError) as exc:
+                logger.error(
+                    "agent_call_failed",
+                    **self._log_id,
+                    attempt=attempt + 1,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+                # Retry if attempts remain, otherwise degrade
+                if attempt < self._max_retries:
+                    continue
+                logger.warning(
+                    "agent_degraded",
+                    **self._log_id,
+                    reason="backend_error",
+                    total_attempts=attempt + 1,
+                )
+                return AgentResult(
+                    output=self._get_default_output(),
+                    degraded=True,
+                    llm_calls=llm_calls,
+                    messages=messages,
+                )
+
             llm_calls.append(call_result)
 
             validation = validate_llm_output(call_result.content, self.output_model)
