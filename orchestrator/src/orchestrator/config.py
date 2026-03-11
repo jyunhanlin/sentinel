@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     llm_backend: str = "cli"                         # "api" | "cli"
     claude_cli_path: str = "claude"
     claude_cli_timeout: int = 600                    # seconds
-    claude_cli_max_concurrent: int = 3               # max parallel CLI calls
+    claude_cli_max_concurrent: int = 5               # max parallel CLI calls
 
     # Logging
     log_json: bool = False  # True for structured JSON, False for console

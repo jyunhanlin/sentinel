@@ -97,7 +97,6 @@ def create_app_components(
         backend = ClaudeCLIBackend(
             cli_path=claude_cli_path,
             timeout=claude_cli_timeout,
-            max_concurrent=claude_cli_max_concurrent,
         )
     else:
         backend = LiteLLMBackend(api_key=anthropic_api_key)
@@ -107,6 +106,7 @@ def create_app_components(
         model=llm_model,
         temperature=llm_temperature,
         max_tokens=llm_max_tokens,
+        max_concurrent=claude_cli_max_concurrent if llm_backend == "cli" else 0,
     )
 
     # Agents

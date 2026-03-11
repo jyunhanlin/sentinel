@@ -1,6 +1,9 @@
 # orchestrator/src/orchestrator/llm/client.py
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 import structlog
@@ -27,11 +30,22 @@ class LLMClient:
         model: str,
         temperature: float = 0.2,
         max_tokens: int = 2000,
+        max_concurrent: int = 0,
     ) -> None:
         self._backend = backend
         self.model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
+        self._semaphore = asyncio.Semaphore(max_concurrent) if max_concurrent > 0 else None
+
+    @asynccontextmanager
+    async def throttle(self) -> AsyncIterator[None]:
+        """Acquire concurrency slot. No-op when max_concurrent is 0."""
+        if self._semaphore is not None:
+            async with self._semaphore:
+                yield
+        else:
+            yield
 
     async def call(
         self,

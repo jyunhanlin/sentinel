@@ -118,11 +118,9 @@ class ClaudeCLIBackend(LLMBackend):
         self,
         cli_path: str = "claude",
         timeout: int = 120,
-        max_concurrent: int = 3,
     ) -> None:
         self._cli_path = cli_path
         self._timeout = timeout
-        self._semaphore = asyncio.Semaphore(max_concurrent)
 
     async def complete(
         self,
@@ -132,8 +130,7 @@ class ClaudeCLIBackend(LLMBackend):
         temperature: float,
         max_tokens: int,
     ) -> LLMCallResult:
-        async with self._semaphore:
-            return await self._run_cli(messages, model=model)
+        return await self._run_cli(messages, model=model)
 
     async def _run_cli(
         self,

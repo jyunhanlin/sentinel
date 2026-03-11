@@ -38,8 +38,18 @@ class BaseAgent[T: BaseModel](ABC):
         return fields
 
     async def analyze(self, *, model_override: str | None = None, **kwargs) -> AgentResult[T]:
-        logger.info("agent_start", **self._log_id)
         messages = self._build_messages(**kwargs)
+
+        async with self._client.throttle():
+            return await self._run(messages, model_override=model_override)
+
+    async def _run(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model_override: str | None = None,
+    ) -> AgentResult[T]:
+        logger.info("agent_start", **self._log_id)
         llm_calls: list[LLMCallResult] = []
 
         for attempt in range(1 + self._max_retries):
@@ -53,7 +63,6 @@ class BaseAgent[T: BaseModel](ABC):
                     error=str(exc),
                     error_type=type(exc).__name__,
                 )
-                # Retry if attempts remain, otherwise degrade
                 if attempt < self._max_retries:
                     continue
                 logger.warning(
@@ -86,7 +95,6 @@ class BaseAgent[T: BaseModel](ABC):
                     messages=messages,
                 )
 
-            # Retry with error feedback
             logger.warning(
                 "agent_validation_failed",
                 **self._log_id,
@@ -97,7 +105,6 @@ class BaseAgent[T: BaseModel](ABC):
             if attempt < self._max_retries:
                 messages = self._build_retry_messages(messages, validation.error_message)
 
-        # All retries exhausted — degrade
         logger.warning(
             "agent_degraded",
             **self._log_id,
