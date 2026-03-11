@@ -11,10 +11,10 @@ Scheduler (every N min)
     │
     ├─ Technical (short-term) ──┐
     ├─ Technical (long-term) ───┤
-    ├─ Positioning ─────────────┼─ Proposer → Aggregator
-    ├─ Catalyst ────────────────┤                  │
-    ├─ Correlation ─────────────┘                  ▼
-    │                                TG Push [Approve / Reject]
+    ├─ Positioning ─────────────┼─ Proposer ─→ Critic ─→ Aggregator
+    ├─ Catalyst ────────────────┤     ▲           │            │
+    ├─ Correlation ─────────────┘     └───────────┘            ▼
+    │                              (Refinement Loop)   TG Push [Approve / Reject]
     │                                                          │
     │                                                 OrderExecutor (Paper/Live)
     │                                                          │
@@ -69,8 +69,10 @@ All config via environment variables or `.env` file at the repo root.
 | `LLM_MODEL_PREMIUM`         | `anthropic/claude-opus-4-6`   | Premium model for `/run` override                     |
 | `CLAUDE_CLI_TIMEOUT`         | `600`                         | CLI subprocess timeout in seconds                     |
 | `DATABASE_URL`              | `sqlite:///data/sentinel.db`  | SQLite database path                                  |
-| `PIPELINE_INTERVAL_MINUTES` | `15`                          | Auto-run interval                                     |
-| `PIPELINE_SYMBOLS`          | `BTC/USDT:USDT,ETH/USDT:USDT` | Symbols to analyze                                    |
+| `LOG_JSON`                  | `true`                        | JSON log output (`false` for console)                 |
+| `PIPELINE_INTERVAL_MINUTES` | `720`                         | Auto-run interval                                     |
+| `PIPELINE_SYMBOLS`          | `["BTC/USDT:USDT","ETH/USDT:USDT"]` | Symbols to analyze (JSON array)                |
+| `REFINEMENT_MAX_ROUNDS`     | `2`                           | Max proposer↔critic revision rounds                   |
 | `TRADING_MODE`              | `paper`                       | `paper` or `live`                                     |
 | `APPROVAL_TIMEOUT_MINUTES`  | `15`                          | Approval expiry time                                  |
 | `PRICE_DEVIATION_THRESHOLD` | `0.01`                        | Max price change (1%) before rejecting stale approval |
@@ -124,16 +126,17 @@ uv run ruff format src/ tests/
 sentinel/
 ├── orchestrator/              # Python project (uv)
 │   └── src/orchestrator/
-│       ├── agents/            # LLM agents (technical, positioning, catalyst, correlation, proposer)
+│       ├── agents/            # LLM agents (technical, positioning, catalyst, correlation, proposer, critic)
 │       ├── approval/          # Approval state machine + models
 │       ├── exchange/          # CCXT client, data fetcher, external data (DXY, S&P, BTC.D), paper engine
 │       ├── execution/         # OrderExecutor (paper/live) + position sizers
 │       ├── llm/               # LiteLLM / Claude CLI backend + schema validation
-│       ├── pipeline/          # Runner, scheduler, aggregator
+│       ├── pipeline/          # Runner, scheduler, aggregator, refinement loop
 │       ├── stats/             # Performance statistics + pipeline evaluator
 │       ├── storage/           # SQLModel tables + repositories
 │       ├── telegram/          # Bot handlers + formatters
 │       ├── config.py          # Pydantic settings
+│       ├── logging.py         # Structured logging setup (structlog)
 │       └── models.py          # Core domain models
 ├── schemas/                   # Cross-language JSON Schema definitions
 └── .env.example               # Environment variable template
