@@ -1,8 +1,8 @@
-<!-- Generated: 2026-03-02 | Files scanned: 50 | Token estimate: ~700 -->
+<!-- Generated: 2026-03-11 | Files scanned: 49 | Token estimate: ~700 -->
 
 # Frontend — Telegram Bot UI
 
-## SentinelBot (`telegram/bot.py`, 1483L)
+## SentinelBot (`telegram/bot.py`, 2211L)
 
 ### Commands
 
@@ -12,19 +12,19 @@
 | `/help` | help_cmd | Command listing |
 | `/status` | status_cmd | Account overview + open positions + recent proposals |
 | `/coin <sym>` | coin_cmd | On-demand pipeline run for symbol |
-| `/run [sym] [model]` | run_cmd | Trigger pipeline (model: sonnet/opus) |
+| `/run [sym] [model]` | run_cmd | Trigger pipeline (model: sonnet/opus, supports refine flag) |
 | `/history [sym] [page]` | history_cmd | Paginated closed trades |
 | `/perf` | perf_cmd | Performance stats (win rate, Sharpe, drawdown) |
 | `/evaluate` | evaluate_cmd | Pipeline accuracy report (direction, entry deviation, confidence buckets) |
-| `/resume` | resume_cmd | Unpause paper engine after risk pause |
 
 ### Push Notifications
 
 ```
 push_to_admins_with_approval(PipelineResult)
-  ├── directional trade → approval card + Approve/Reject/Cancel buttons
+  ├── directional trade → approval card + ExecutionPlan + Approve/Reject/Cancel buttons
   ├── FLAT signal → plain notification
-  └── rejected/failed → status notification
+  ├── rejected/failed → status notification
+  └── shows refinement status (rounds, exhausted) if applicable
 
 push_close_report(CloseResult) → SL/TP/liquidation alert + pipeline evaluation feedback
 update_price_board(TickerSummary[]) → pinned message, auto-edit
@@ -58,7 +58,7 @@ Cached via `_MessageCache` (OrderedDict LRU, 50 entries)
 
 `sonnet → anthropic/claude-sonnet-4-6`, `opus → anthropic/claude-opus-4-6`
 
-## Formatters (`telegram/formatters.py`, 718L)
+## Formatters (`telegram/formatters.py`, 838L)
 
 Pure functions, no I/O. All return Telegram MarkdownV2 strings:
 
@@ -66,10 +66,9 @@ Pure functions, no I/O. All return Telegram MarkdownV2 strings:
 |----------|-------|--------|
 | format_proposal | PipelineResult | Full analysis + proposal card |
 | format_pending_approval | PendingApproval | Approval card with leverage/margin info |
+| format_execution_plan | ExecutionPlan | Two-section execution plan (order + risk) |
 | format_execution_result | ExecutionResult | Entry confirmation |
 | format_trade_report | CloseResult | Close summary with PnL |
-| format_risk_rejection | proposal, reason | Risk rejection notice |
-| format_risk_pause | reason | Pause notification |
 | format_status | list | Account overview + positions |
 | format_perf_report | PerformanceStats | Win rate, Sharpe, drawdown |
 | format_position_card | PositionInfo | Single position detail |

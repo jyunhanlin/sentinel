@@ -1,10 +1,10 @@
-<!-- Generated: 2026-03-02 | Files scanned: 50 | Token estimate: ~700 -->
+<!-- Generated: 2026-03-11 | Files scanned: 49 | Token estimate: ~700 -->
 
 # Data — Storage & Models
 
 ## Database: SQLite (aiosqlite + SQLModel)
 
-### Tables (`storage/models.py`, 103L)
+### Tables (`storage/models.py`, 101L)
 
 ```
 pipeline_runs
@@ -43,7 +43,7 @@ account_snapshots
   ├── sharpe_ratio, total_trades
 ```
 
-### Repositories (`storage/repository.py`, 441L)
+### Repositories (`storage/repository.py`, 443L)
 
 | Repository | Key Methods |
 |-----------|-------------|
@@ -54,12 +54,13 @@ account_snapshots
 | AccountSnapshotRepository | save_snapshot, get_latest |
 | ApprovalRepository | save_approval, update_status, get_pending |
 
-### Migrations (`storage/migrations.py`, 115L)
+### Migrations (`storage/migrations.py`, 187L)
 
 Version-tracked via `SchemaMigration` table. `@_register(version, name)` decorator.
 - v1: adds leverage/margin/liquidation_price/close_reason/stop_loss/take_profit_json to paper_trades
+- v2: backfills risk_check defaults on trade_proposals
 
-## Domain Models (`models.py`, 132L)
+## Domain Models (`models.py`, 148L)
 
 All `frozen=True` Pydantic models:
 
@@ -69,6 +70,9 @@ All `frozen=True` Pydantic models:
 | PositioningAnalysis | funding_trend/extreme, oi_change_pct, retail/smart_money bias, squeeze_risk, confidence |
 | CatalystReport | upcoming/active events, risk_level, recommendation, confidence |
 | CorrelationAnalysis | dxy_trend/impact, sp500_regime, btc_dominance_trend, cross_market_alignment, confidence |
+| DimensionVerdict | dimension, passed, reason |
+| CritiqueResult | verdicts, overall_passed, suggestions, summary |
+| EntryOrder | type (market/limit), price |
 | TradeProposal | symbol, side, entry, position_size_risk_pct, stop_loss, take_profit[], suggested_leverage, confidence, invalid_if, rationale |
 | MarketSnapshot | symbol, timeframe, ohlcv, funding_rate, last_price |
 | TickerSummary | symbol, last_price, change_24h_pct, volume_24h |
@@ -78,9 +82,9 @@ All `frozen=True` Pydantic models:
 ### Enums
 
 `Side`: long, short, flat
-`Trend`: strong_up, up, neutral, down, strong_down
-`VolatilityRegime`: low, normal, high, extreme
-`Momentum`: strong_bullish, bullish, neutral, bearish, strong_bearish
+`Trend`: up, down, range
+`VolatilityRegime`: low, medium, high
+`Momentum`: bullish, bearish, neutral
 
 ## Exchange Data Flow
 

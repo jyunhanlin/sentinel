@@ -1,4 +1,4 @@
-<!-- Generated: 2026-03-02 | Files scanned: 50 | Token estimate: ~500 -->
+<!-- Generated: 2026-03-11 | Files scanned: 49 | Token estimate: ~500 -->
 
 # Dependencies — External Services & Libraries
 
@@ -45,11 +45,10 @@ __main__.py (composition root)
   ├── llm ─────────────── litellm | claude CLI subprocess
   ├── agents ──────────── llm (via LLMClient)
   ├── exchange ────────── ccxt (async), aiohttp
-  ├── risk ────────────── (pure logic, no external deps)
   ├── approval ────────── storage (repositories)
   ├── execution ───────── exchange (ExchangeClient) | paper_engine
-  ├── pipeline ────────── agents + exchange + risk + approval + storage
-  ├── stats ───────────── (pure logic)
+  ├── pipeline ────────── agents + exchange + approval + storage + execution
+  ├── stats ───────────── storage (repositories, pure logic)
   └── telegram ────────── python-telegram-bot + llm (translations)
 ```
 
@@ -59,11 +58,12 @@ __main__.py (composition root)
 sentinel/
 ├── orchestrator/           Python project (uv managed)
 │   ├── pyproject.toml
-│   └── src/orchestrator/   Main package (50 files, 7534 lines)
-├── executor/               Rust project (future, not implemented)
+│   └── src/orchestrator/   Main package (49 files, 8,067 lines)
 ├── schemas/                Cross-language JSON schemas
 │   └── trade_proposal.json
-├── .claude/skills/         Agent skill definitions (5 SKILL.md files)
+├── .claude/skills/         Agent skill definitions (6 internal SKILL.md files)
+├── .agents/skills/         External skills (Binance Skills Hub, 7 skills)
+├── skills-lock.json        External skill version locks
 ├── docs/plans/             Design & implementation docs (30+ files)
 └── docs/CODEMAPS/          This documentation
 ```

@@ -1,36 +1,52 @@
-<!-- Generated: 2026-03-02 | Files scanned: 50 | Token estimate: ~950 -->
+<!-- Generated: 2026-03-11 | Files scanned: 49 | Token estimate: ~950 -->
 
 # Backend — Pipeline & Agent Architecture
 
 ## Entry Point
 
-`orchestrator/__main__.py` (392L)
+`orchestrator/__main__.py` (372L)
 - `parse_args()` → subcommands: `perf`, default=bot
 - `create_app_components(**kwargs)` → manual DI, returns component dict
 - `_run_bot(components, settings)` → starts scheduler + Telegram bot
 
 ## Pipeline
 
-### PipelineRunner (`pipeline/runner.py`, 385L)
+### PipelineRunner (`pipeline/runner.py`, 390L)
 
 ```
-execute(symbol, timeframe, model_override) -> PipelineResult
+execute(symbol, timeframe, model_override, refinement) -> PipelineResult
   1. asyncio.gather: snapshot, positioning, macro, DXY, SP500, BTC.D, calendar, announcements
   2. asyncio.gather: technical_short, technical_long, positioning, catalyst, correlation
-  3. serial:         proposer(all_analyses) → TradeProposal
+  3. serial:         refinement_loop(proposer, critic, feedback) or proposer(all_analyses)
   4. aggregate_proposal(proposal, price) → validates SL placement
-  5. approval_manager.create() or paper_engine.open_position()
-  6. persist: pipeline_run + llm_calls + proposal
+  5. execution_planner.create_plan(proposal, price) → ExecutionPlan
+  6. approval_manager.create() or paper_engine.open_position()
+  7. persist: pipeline_run + llm_calls + proposal
 ```
 
 **PipelineResult.status**: `completed | rejected | pending_approval | failed`
 
-### PipelineScheduler (`pipeline/scheduler.py`, 143L)
+### RefinementLoop (`pipeline/refinement.py`, 129L)
+
+```
+run(proposer_kwargs) -> RefinementResult
+  1. proposer.analyze() → TradeProposal
+  2. if degraded → return early
+  3. loop (up to max_rounds):
+     a. critic.analyze(proposal) → CritiqueResult
+     b. if passed → return
+     c. proposer.analyze(critique_feedback=suggestions) → revised proposal
+  4. if exhausted → return with exhausted=True
+```
+
+**RefinementResult**: proposal, critique, rounds, exhausted, all_llm_calls
+
+### PipelineScheduler (`pipeline/scheduler.py`, 146L)
 
 | Job | Interval | Model |
 |-----|----------|-------|
 | `run_once()` | every N min (default 720) | Sonnet |
-| `_run_daily_premium()` | daily 00:00 UTC | Opus |
+| `_run_daily_premium()` | daily 00:00 UTC | Opus (with refinement) |
 | `_expire_stale_approvals()` | every 1 min | — |
 | `price_monitor.check()` | every N sec | — |
 
@@ -61,7 +77,8 @@ analyze(**kwargs) -> AgentResult[T]
 | PositioningAgent | positioning.py (57L) | PositioningAnalysis | funding, OI, L/S ratios |
 | CatalystAgent | catalyst.py (55L) | CatalystReport | calendar, announcements |
 | CorrelationAgent | correlation.py (51L) | CorrelationAnalysis | DXY, SP500, BTC.D |
-| ProposerAgent | proposer.py (104L) | TradeProposal | all 5 analyses + snapshot |
+| ProposerAgent | proposer.py (111L) | TradeProposal | all 5 analyses + snapshot |
+| CriticAgent | critic.py (105L) | CritiqueResult | proposal + all market data |
 
 **Two TechnicalAgent instances:** short_term (50 candles), long_term (30 candles + macro)
 
@@ -83,6 +100,13 @@ analyze(**kwargs) -> AgentResult[T]
 `validate_llm_output(raw, model_class)` → extracts JSON (handles ``` blocks) → Pydantic validates
 
 ## Execution
+
+### ExecutionPlanner (`execution/planner.py`, 141L)
+
+`create_plan(proposal, current_price) -> ExecutionPlan`
+- Pure Python, no LLM calls
+- Fixed-margin sizing from config (`trade_margin_amount`)
+- Computes leverage, quantity, fees, liquidation price, risk/reward ratio
 
 ### Position Sizers (`execution/position_sizer.py`, 39L)
 
