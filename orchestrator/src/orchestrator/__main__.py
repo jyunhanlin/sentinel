@@ -111,7 +111,7 @@ def create_app_components(
 
     # Agents
     technical_short = TechnicalAgent(
-        client=llm_client, label="short_term", candle_count=50,
+        client=llm_client, label="short_term", candle_count=24,
         max_retries=llm_max_retries,
     )
     technical_long = TechnicalAgent(

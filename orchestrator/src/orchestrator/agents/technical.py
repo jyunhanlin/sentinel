@@ -22,7 +22,7 @@ class TechnicalAgent(BaseAgent[TechnicalAnalysis]):
         client,
         *,
         label: str = "short_term",
-        candle_count: int = 50,
+        candle_count: int = 24,
         max_retries: int = 1,
     ) -> None:
         super().__init__(client, max_retries=max_retries)
